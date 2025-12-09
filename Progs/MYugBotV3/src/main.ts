@@ -1,8 +1,10 @@
 import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
+import { BotModule } from './bot/bot.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
-  await app.listen(process.env.PORT ?? 3000);
+  // Для Telegram бота не нужен HTTP сервер
+  const app = await NestFactory.createApplicationContext(BotModule);
+  console.log('✅ Telegram бот запущен и готов к работе');
 }
+
 bootstrap();

@@ -16,7 +16,15 @@ export class UsersRepository {
   async findByTelegramId(telegramId: number): Promise<User | null> {
     const query = UsersQueries.findByTelegramId(telegramId);
     const result = await this.dbService.query(query);
-    return result.length > 0 ? result[0] : null;
+    if (result.length > 0) {
+      const user = result[0];
+      // Обрезаем пробелы из role_name (из-за CHAR в Firebird)
+      if (user.ROLE_NAME) {
+        user.role_name = user.ROLE_NAME.trim();
+      }
+      return user;
+    }
+    return null;
   }
 
   /**
@@ -48,20 +56,20 @@ export class UsersRepository {
   async update(telegramId: number, updates: Partial<User>): Promise<User | null> {
     // Динамическое построение UPDATE запроса на основе переданных полей
     const fields = Object.keys(updates)
-      .filter(key => updates[key] !== undefined)
+      .filter(key => updates[key] !== undefined && key !== 'telegram_id' && key !== 'id')
       .map(key => `${key} = ?`)
       .join(', ');
 
     if (!fields) return this.findByTelegramId(telegramId);
 
     const values = Object.keys(updates)
-      .filter(key => updates[key] !== undefined)
+      .filter(key => updates[key] !== undefined && key !== 'telegram_id' && key !== 'id')
       .map(key => updates[key]);
 
     const query = `
       UPDATE tg_users 
       SET ${fields}, updated_at = CURRENT_TIMESTAMP
-      WHERE telegram_id = ?
+      WHERE chat_id = ?
     `;
 
     await this.dbService.query(query, [...values, telegramId]);

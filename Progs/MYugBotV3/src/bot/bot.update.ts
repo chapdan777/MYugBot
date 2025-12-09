@@ -6,6 +6,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { UseGuards } from '@nestjs/common';
+import { PaymentsService } from '../payments/payments.service';
 
 /**
  * Главный обработчик обновлений бота
@@ -13,7 +14,10 @@ import { UseGuards } from '@nestjs/common';
  */
 @Update()
 export class BotUpdate {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly paymentsService: PaymentsService,
+  ) {}
 
   /**
    * Обработка команды /start
@@ -25,22 +29,28 @@ export class BotUpdate {
       return;
     }
 
-    if (!user || user.is_blocked) {
+    if (!user) {
+      await ctx.reply('❌ Ошибка авторизации. Попробуйте позже.');
+      return;
+    }
+
+    if (user.is_blocked) {
       await ctx.reply('❌ Доступ заблокирован. Обратитесь к администратору.');
       return;
     }
 
-    if (!user.is_registered) {
-      await ctx.reply(
-        'Добро пожаловать! Ваша заявка на регистрацию отправлена администратору.\n' +
-        'После одобрения вы получите уведомление и сможете пользоваться ботом.'
-      );
-      return;
-    }
+    // TODO: Раскомментировать после первой регистрации
+    // if (!user.is_registered) {
+    //   await ctx.reply(
+    //     'Добро пожаловать! Ваша заявка на регистрацию отправлена администратору.\n' +
+    //     'После одобрения вы получите уведомление и сможете пользоваться ботом.'
+    //   );
+    //   return;
+    // }
 
     // Главное меню с inline клавиатурой
     await ctx.reply(
-      `Главное меню\nВаша роль: ${user.role_name}`,
+      `Главное меню\nВаша роль: ${user.role_name || 'Гость'}`,
       this.getMainMenuKeyboard(user.group_id)
     );
   }
@@ -63,6 +73,9 @@ export class BotUpdate {
           break;
         case 'view':
           await this.handleViewEntity(ctx, entity, id, user);
+          break;
+        case 'payments':
+          await this.handlePaymentsAction(ctx, entity, id, params, user);
           break;
         case 'back':
           await this.handleBackNavigation(ctx, entity, id, user);
@@ -119,8 +132,23 @@ export class BotUpdate {
    * Навигация по разделам меню
    */
   private async handleMenuNavigation(ctx: Context, section: string, user: User) {
-    // TODO: Будет реализовано в соответствующих модулях
     await ctx.answerCbQuery();
+    
+    if (section === 'main') {
+      // Возврат в главное меню
+      await ctx.editMessageText(
+        `Главное меню\nВаша роль: ${user.role_name || 'Гость'}`,
+        this.getMainMenuKeyboard(user.group_id)
+      );
+      return;
+    }
+
+    if (section === 'payments') {
+      await this.showPaymentsMainMenu(ctx, user);
+      return;
+    }
+
+    // TODO: Будет реализовано в соответствующих модулях
     await ctx.editMessageText(`Раздел: ${section}`, {
       reply_markup: {
         inline_keyboard: [
@@ -151,9 +179,127 @@ export class BotUpdate {
     if (target === 'main' || !target) {
       // Возврат в главное меню
       await ctx.editMessageText(
-        `Главное меню\nВаша роль: ${user.role_name}`,
+        `Главное меню\nВаша роль: ${user.role_name || 'Гость'}`,
         this.getMainMenuKeyboard(user.group_id)
       );
+      return;
     }
+
+    if (target === 'payments') {
+      await this.showPaymentsMainMenu(ctx, user);
+      return;
+    }
+  }
+
+  /**
+   * Меню "Касса"
+   */
+  private async showPaymentsMainMenu(ctx: Context, user: User) {
+    await ctx.editMessageText('💳 Касса', {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: '🥬 Капуста', callback_data: 'payments:balance' },
+          ],
+          [
+            { text: '📒 Журнал 7 дней', callback_data: 'payments:journal:7days' },
+          ],
+          [
+            { text: '📘 Журнал сегодня', callback_data: 'payments:journal:today' },
+          ],
+          [
+            { text: '◀️ Назад', callback_data: 'menu:main' },
+          ],
+        ],
+      },
+      parse_mode: 'HTML',
+    } as any);
+  }
+
+  /**
+   * Обработка действий кассы
+   */
+  private async handlePaymentsAction(
+    ctx: Context & { callbackQuery: any },
+    action: string,
+    id: string,
+    params: string[],
+    user: User,
+  ) {
+    await ctx.answerCbQuery();
+
+    switch (action) {
+      case 'balance': {
+        const balance = await this.paymentsService.getCashboxBalance();
+        await ctx.editMessageText(`🥬 Капуста\nТекущий баланс: <b>${balance.toLocaleString('ru-RU')} ₽</b>`, {
+          reply_markup: {
+            inline_keyboard: [[{ text: '◀️ Назад', callback_data: 'back:payments' }]],
+          },
+          parse_mode: 'HTML',
+        } as any);
+        break;
+      }
+      case 'journal': {
+        const period = id as '7days' | 'today'; // '7days' | 'today'
+        await this.showJournalWithFilters(ctx, period);
+        break;
+      }
+      case 'filter': {
+        const period = id as '7days' | 'today'; // '7days' | 'today'
+        const direction = params[0] as 'income' | 'expense' | 'all';
+        await this.showJournalWithFilters(ctx, period, direction);
+        break;
+      }
+      default:
+        await ctx.answerCbQuery('Неизвестная команда кассы');
+    }
+  }
+
+  /**
+   * Показ журнала с фильтрами Приход/Расход
+   */
+  private async showJournalWithFilters(
+    ctx: Context & { callbackQuery: any },
+    period: '7days' | 'today',
+    direction: 'income' | 'expense' | 'all' = 'all',
+  ) {
+    const today = new Date();
+    let entries =
+      period === '7days'
+        ? await this.paymentsService.getCashFlowLastSevenDays()
+        : await this.paymentsService.getCashFlowByDate(
+            new Date().toISOString().split('T')[0],
+          );
+
+    if (direction === 'income') {
+      entries = entries.filter((e) => e.moneysum > 0);
+    } else if (direction === 'expense') {
+      entries = entries.filter((e) => e.moneysum < 0);
+    }
+
+    const title =
+      period === '7days'
+        ? '📒 Журнал за 7 дней'
+        : '📘 Журнал за сегодня';
+
+    const text = `${title}\n\n${this.paymentsService.formatCashFlowForDisplay(entries)}`;
+
+    await ctx.editMessageText(text, {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: '🔹 Приход', callback_data: `payments:filter:${period}:income` },
+            { text: '🔻 Расход', callback_data: `payments:filter:${period}:expense` },
+          ],
+          [
+            { text: '📊 Все', callback_data: `payments:filter:${period}:all` },
+          ],
+          [
+            { text: '◀️ Назад', callback_data: 'back:payments' },
+          ],
+        ],
+      },
+      parse_mode: 'HTML',
+    } as any);
   }
 }

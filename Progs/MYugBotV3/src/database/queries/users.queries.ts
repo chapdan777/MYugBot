@@ -6,13 +6,21 @@
 export const UsersQueries = {
   // Find user by Telegram ID
   findByTelegramId: (telegramId: number) => `
-    SELECT u.id, u.telegram_id, u.chat_id, u.group_id, 
+    SELECT u.id, u.chat_id as telegram_id, u.chat_id, u.group_id, 
            u.first_name, u.last_name, u.username,
            u.is_registered, u.is_blocked,
-           g.name as role_name
+           CASE u.group_id
+             WHEN 1 THEN 'Guest'
+             WHEN 2 THEN 'Client'
+             WHEN 3 THEN 'Agent'
+             WHEN 4 THEN 'Contractor'
+             WHEN 5 THEN 'Payer'
+             WHEN 6 THEN 'Manager'
+             WHEN 7 THEN 'Administrator'
+             ELSE 'Guest'
+           END as role_name
     FROM tg_users u
-    LEFT JOIN tg_user_groups g ON g.id = u.group_id
-    WHERE u.telegram_id = ${telegramId}
+    WHERE u.chat_id = ${telegramId}
   `,
 
   // Create new user

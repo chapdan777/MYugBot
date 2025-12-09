@@ -11,23 +11,29 @@ export const PaymentsQueries = {
   `,
 
   // Get cash flow journal for specific date
-  getCashFlowByDate: (date: string) => `
-    SELECT * 
-    FROM JOURNAL_CASHFLOW J 
-    WHERE J.category != '#СВЕРКА#' 
-      AND j.fact_date = '${date}'  
-    ORDER BY J.ID DESC
-  `,
+  getCashFlowByDate: (date: string) => ({
+    query: `
+      SELECT * 
+      FROM JOURNAL_CASHFLOW J 
+      WHERE J.category != '#СВЕРКА#' 
+        AND CAST(J.fact_date AS DATE) = CAST(? AS DATE)
+      ORDER BY J.ID DESC
+    `,
+    params: [date]
+  }),
 
   // Get cash flow journal for last 7 days
-  getCashFlowLastSevenDays: (startDate: string, endDate: string) => `
-    SELECT * 
-    FROM JOURNAL_CASHFLOW J 
-    WHERE J.category != '#СВЕРКА#' 
-      AND J.fact_date >= '${startDate}' 
-      AND J.fact_date <= '${endDate}' 
-    ORDER BY J.ID DESC
-  `,
+  getCashFlowLastSevenDays: (startDate: string, endDate: string) => ({
+    query: `
+      SELECT * 
+      FROM JOURNAL_CASHFLOW J 
+      WHERE J.category != '#СВЕРКА#' 
+        AND CAST(J.fact_date AS DATE) >= CAST(? AS DATE)
+        AND CAST(J.fact_date AS DATE) <= CAST(? AS DATE)
+      ORDER BY J.ID DESC
+    `,
+    params: [startDate, endDate]
+  }),
 
   // Create cash flow entry
   createCashFlowEntry: (

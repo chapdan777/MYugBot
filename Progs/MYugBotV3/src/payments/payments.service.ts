@@ -62,9 +62,14 @@ export class PaymentsService {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - 7);
 
+    // Преобразуем даты в строковый формат YYYY-MM-DD для корректной работы с Firebird
+    const formatDate = (date: Date): string => {
+      return date.toISOString().split('T')[0];
+    };
+
     return await this.paymentsRepository.getCashFlowLastSevenDays(
-      this.formatDate(startDate),
-      this.formatDate(endDate),
+      formatDate(startDate),
+      formatDate(endDate),
     );
   }
 

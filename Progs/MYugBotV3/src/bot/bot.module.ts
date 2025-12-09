@@ -12,6 +12,9 @@ import { AuthMiddleware } from '../common/middleware/auth.middleware';
 
 @Module({
   imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+    }),
     TelegrafModule.forRootAsync({
       imports: [ConfigModule, UsersModule],
       useFactory: async (configService: ConfigService, authMiddleware: AuthMiddleware) => {

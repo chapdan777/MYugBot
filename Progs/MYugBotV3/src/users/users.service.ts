@@ -53,7 +53,28 @@ export class UsersService {
       user = await this.usersRepository.findByTelegramId(dto.telegram_id);
     }
     
+    // Перевод роли на русский
+    if (user && user.role_name) {
+      user.role_name = this.translateRole(user.role_name.trim());
+    }
+    
     return user;
+  }
+
+  /**
+   * Перевод роли на русский
+   */
+  private translateRole(role: string): string {
+    const roleMap: Record<string, string> = {
+      'Guest': 'Гость',
+      'Client': 'Клиент',
+      'Agent': 'Агент',
+      'Contractor': 'Контрагент',
+      'Payer': 'Плательщик',
+      'Manager': 'Менеджер',
+      'Administrator': 'Администратор',
+    };
+    return roleMap[role] || role;
   }
 
   /**

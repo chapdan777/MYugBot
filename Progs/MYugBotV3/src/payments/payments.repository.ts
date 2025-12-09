@@ -16,23 +16,46 @@ export class PaymentsRepository {
   async getCashboxBalance(): Promise<{ amount: number } | null> {
     const query = PaymentsQueries.getCashboxBalance();
     const result = await this.dbService.query(query);
-    return result.length > 0 ? result[0] : null;
+    // В Firebird поля возвращаются в верхнем регистре
+    return result.length > 0 ? { amount: result[0].AMOUNT } : null;
   }
 
   /**
    * Получить операции кассы за дату
    */
   async getCashFlowByDate(date: string): Promise<CashFlowEntry[]> {
-    const query = PaymentsQueries.getCashFlowByDate(date);
-    return await this.dbService.query(query);
+    const queryObj = PaymentsQueries.getCashFlowByDate(date);
+    const result = await this.dbService.query(queryObj.query, queryObj.params);
+    // Преобразуем поля из верхнего регистра в нижний
+    return result.map(item => ({
+      id: item.ID,
+      fact_date: item.FACT_DATE,
+      category: item.CATEGORY,
+      purpose: item.PURPOSE,
+      moneysum: item.MONEYSUM,
+      comment: item.COMMENT,
+      ts: item.TS,
+      deleted: item.DELETED,
+    }));
   }
 
   /**
    * Получить операции кассы за последние дни
    */
   async getCashFlowLastSevenDays(startDate: string, endDate: string): Promise<CashFlowEntry[]> {
-    const query = PaymentsQueries.getCashFlowLastSevenDays(startDate, endDate);
-    return await this.dbService.query(query);
+    const queryObj = PaymentsQueries.getCashFlowLastSevenDays(startDate, endDate);
+    const result = await this.dbService.query(queryObj.query, queryObj.params);
+    // Преобразуем поля из верхнего регистра в нижний
+    return result.map(item => ({
+      id: item.ID,
+      fact_date: item.FACT_DATE,
+      category: item.CATEGORY,
+      purpose: item.PURPOSE,
+      moneysum: item.MONEYSUM,
+      comment: item.COMMENT,
+      ts: item.TS,
+      deleted: item.DELETED,
+    }));
   }
 
   /**
@@ -77,7 +100,11 @@ export class PaymentsRepository {
    */
   async getCashFlowCategories(): Promise<{ category: string }[]> {
     const query = PaymentsQueries.getCashFlowCategories();
-    return await this.dbService.query(query);
+    const result = await this.dbService.query(query);
+    // Преобразуем поля из верхнего регистра в нижний
+    return result.map(item => ({
+      category: item.CATEGORY,
+    }));
   }
 
   /**
@@ -86,7 +113,15 @@ export class PaymentsRepository {
   async getOrderPayments(orderId: number): Promise<PaymentDetails | null> {
     const query = PaymentsQueries.getOrderPayments(orderId);
     const result = await this.dbService.query(query);
-    return result.length > 0 ? result[0] : null;
+    // Преобразуем поля из верхнего регистра в нижний
+    if (result.length > 0) {
+      return {
+        order_total_cost: result[0].ORDER_TOTAL_COST,
+        order_pay: result[0].ORDER_PAY,
+        order_debt: result[0].ORDER_DEBT,
+      };
+    }
+    return null;
   }
 
   /**
@@ -94,6 +129,11 @@ export class PaymentsRepository {
    */
   async getAdvanceBalance(billingAccountId?: number): Promise<AdvanceBalance[]> {
     const query = PaymentsQueries.getAdvanceBalance(billingAccountId);
-    return await this.dbService.query(query);
+    const result = await this.dbService.query(query);
+    // Преобразуем поля из верхнего регистра в нижний
+    return result.map(item => ({
+      id_billing_account: item.ID_BILLING_ACCOUNT,
+      balance: item.BALANCE,
+    }));
   }
 }
