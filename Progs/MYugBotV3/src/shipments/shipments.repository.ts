@@ -15,7 +15,15 @@ export class ShipmentsRepository {
    */
   async getShipmentsList(isProfile: boolean): Promise<ShipmentSummary[]> {
     const query = ShipmentsQueries.getShipmentsList(isProfile);
-    return await this.dbService.query(query);
+    const results = await this.dbService.query(query);
+    
+    // Map database fields (uppercase) to interface fields (lowercase)
+    return results.map(row => ({
+      fact_date_out: row.FACT_DATE_OUT,
+      driver_name: row.DRIVER_NAME,
+      box: row.BOX,
+      amount: row.AMOUNT
+    }));
   }
 
   /**
@@ -27,7 +35,17 @@ export class ShipmentsRepository {
     isProfile: boolean,
   ): Promise<ShipmentDetail[]> {
     const query = ShipmentsQueries.getShipmentDetails(driverName, shipmentDate, isProfile);
-    return await this.dbService.query(query);
+    console.log('Executing shipment details query:', query);
+    const results = await this.dbService.query(query);
+    console.log('Shipment details query results:', results);
+    
+    // Map database fields (uppercase) to interface fields (lowercase)
+    return results.map(row => ({
+      id: row.ID,
+      clientname: row.CLIENTNAME,
+      box_count: row.BOX_COUNT,
+      amount: row.AMOUNT
+    }));
   }
 
   /**
