@@ -36,6 +36,34 @@ export interface ShipmentDetail {
 export class ShipmentsService {
   // In-memory cache for user shipment data (expires after 1 hour)
   private userShipmentCache: UserShipmentCache = {};
+///************************ */
+  
+  // Map to store last shown shipments-list message per user (in-memory).
+// Format: userId -> { chatId: number, messageId: number, isProfile?: boolean }
+private lastListMessageByUser: Map<number, { chatId: number; messageId: number; isProfile?: boolean }> = new Map();
+
+/**
+ * Save the last shipments list message reference for a user.
+ */
+setLastListMessage(userId: number, info: { chatId: number; messageId: number; isProfile?: boolean }) {
+  this.lastListMessageByUser.set(userId, info);
+}
+
+/**
+ * Get the saved last shipments list message reference for a user.
+ */
+getLastListMessage(userId: number) {
+  return this.lastListMessageByUser.get(userId);
+}
+
+/**
+ * Clear saved last shipments list message reference for a user.
+ */
+clearLastListMessage(userId: number) {
+  this.lastListMessageByUser.delete(userId);
+}
+
+///************************ */
   
   constructor(private readonly shipmentsRepository: ShipmentsRepository) {
     // Clean up expired cache entries periodically
@@ -204,6 +232,7 @@ export class ShipmentsService {
         
         text += `${index + 1}. Заказ № ${orderId}\n`;
         text += `   ${boxCount} уп / ${this.formatMoney(amount)}\n`;
+        text += `   📂 /id${orderId}\n`;
       });
 
       text += `\n`;

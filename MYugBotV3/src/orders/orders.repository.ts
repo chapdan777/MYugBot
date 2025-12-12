@@ -16,7 +16,39 @@ export class OrdersRepository {
   async getOrderById(orderId: number): Promise<Order | null> {
     const query = OrdersQueries.getOrderById(orderId);
     const result = await this.dbService.query(query);
-    return result.length > 0 ? result[0] : null;
+    
+    if (result.length === 0) return null;
+    
+    // Map database fields (uppercase) to interface fields (lowercase)
+    const row = result[0];
+    return {
+      id: row.ID,
+      itm_ordernum: row.ITM_ORDERNUM,
+      ordernum: row.ORDERNUM,
+      order_type: row.ORDER_TYPE,
+      manager: row.MANAGER,
+      clientname: row.CLIENTNAME,
+      city: row.CITY,
+      price_column: row.PRICE_COLUMN,
+      fasad_mat: row.FASAD_MAT,
+      fasad_model: row.FASAD_MODEL,
+      color: row.COLOR,
+      order_total_cost: row.ORDER_TOTAL_COST,
+      order_cost: row.ORDER_COST,
+      order_pay: row.ORDER_PAY,
+      order_debt: row.ORDER_DEBT,
+      order_generalsq: row.ORDER_GENERALSQ,
+      fact_date_firstsave: row.FACT_DATE_FIRSTSAVE,
+      plan_date_firststage: row.PLAN_DATE_FIRSTSTAGE,
+      plan_date_pack: row.PLAN_DATE_PACK,
+      fact_date_order_out: row.FACT_DATE_ORDER_OUT,
+      status_description: row.STATUS_DESCRIPTION,
+      status_num: row.STATUS_NUM,
+      is_prepaid: row.IS_PREPAID,
+      color_type: row.COLOR_TYPE,
+      color_patina: row.COLOR_PATINA,
+      primech: row.PRIMECH,
+    };
   }
 
   /**
@@ -24,7 +56,19 @@ export class OrdersRepository {
    */
   async getOrderElements(orderId: number): Promise<OrderElement[]> {
     const query = OrdersQueries.getOrderElements(orderId);
-    return await this.dbService.query(query);
+    const results = await this.dbService.query(query);
+    
+    // Map database fields (uppercase) to interface fields (lowercase)
+    return results.map(row => ({
+      id: row.ID,
+      order_id: row.ORDER_ID,
+      name: row.NAME,
+      height: row.HEIGHT,
+      width: row.WIDTH,
+      el_count: row.EL_COUNT,
+      square: row.SQUARE,
+      comment: row.COMMENT,
+    }));
   }
 
   /**
@@ -97,7 +141,8 @@ export class OrdersRepository {
    */
   async searchOrdersByIdOrNumber(searchText: string): Promise<Order[]> {
     const query = OrdersQueries.searchOrdersByIdOrNumber(searchText);
-    return await this.dbService.query(query);
+    const results = await this.dbService.query(query);
+    return this.mapOrdersArray(results);
   }
 
   /**
@@ -105,6 +150,41 @@ export class OrdersRepository {
    */
   async searchOrdersByKeywords(keywords: string[]): Promise<Order[]> {
     const query = OrdersQueries.searchOrdersByKeywords(keywords);
-    return await this.dbService.query(query);
+    const results = await this.dbService.query(query);
+    return this.mapOrdersArray(results);
+  }
+
+  /**
+   * Маппинг массива заказов из базы данных
+   */
+  private mapOrdersArray(results: any[]): Order[] {
+    return results.map(row => ({
+      id: row.ID,
+      itm_ordernum: row.ITM_ORDERNUM,
+      ordernum: row.ORDERNUM,
+      order_type: row.ORDER_TYPE,
+      manager: row.MANAGER,
+      clientname: row.CLIENTNAME,
+      city: row.CITY,
+      price_column: row.PRICE_COLUMN,
+      fasad_mat: row.FASAD_MAT,
+      fasad_model: row.FASAD_MODEL,
+      color: row.COLOR,
+      order_total_cost: row.ORDER_TOTAL_COST,
+      order_cost: row.ORDER_COST,
+      order_pay: row.ORDER_PAY,
+      order_debt: row.ORDER_DEBT,
+      order_generalsq: row.ORDER_GENERALSQ,
+      fact_date_firstsave: row.FACT_DATE_FIRSTSAVE,
+      plan_date_firststage: row.PLAN_DATE_FIRSTSTAGE,
+      plan_date_pack: row.PLAN_DATE_PACK,
+      fact_date_order_out: row.FACT_DATE_ORDER_OUT,
+      status_description: row.STATUS_DESCRIPTION,
+      status_num: row.STATUS_NUM,
+      is_prepaid: row.IS_PREPAID,
+      color_type: row.COLOR_TYPE,
+      color_patina: row.COLOR_PATINA,
+      primech: row.PRIMECH,
+    }));
   }
 }

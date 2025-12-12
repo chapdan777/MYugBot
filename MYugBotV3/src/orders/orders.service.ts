@@ -172,21 +172,54 @@ export class OrdersService {
   /**
    * Форматировать заказ для отображения в Telegram
    */
-  formatOrderForDisplay(order: Order, elements: OrderElement[]): string {
-    let text = `🆔 ${order.itm_ordernum}\n`;
-    text += `⚛️ <code>${order.status_description}</code>\n`;
-    text += `🚻 <b>${order.clientname}</b>\n`;
+  formatOrderForDisplay(order: Order, elements: OrderElement[], showPrices: boolean = true): string {
+    // Первая строка: ID, клиент, номер и примечания
+    let firstLine = `🆔 ${order.id} ${order.clientname || ''}`;
+    
+    if (order.ordernum) {
+      firstLine += ` №${order.ordernum}`;
+    }
+    
+    if (order.primech && order.primech.trim()) {
+      firstLine += ` ${order.primech.trim()}`;
+    }
+    
+    let text = `${firstLine}\n`;
+    text += `⚛️ ${order.status_description || 'Статус неизвестен'}\n`;
+    text += `🚻 <b>${order.clientname || 'Клиент не указан'}</b>\n`;
     text += `${'—'.repeat(22)}\n`;
 
     if (order.manager) text += `🔹 Менеджер: <i>${order.manager}</i>\n`;
     if (order.order_type) text += `🔹 Тип заказа: <i>${order.order_type}</i>\n`;
     if (order.fasad_mat) text += `🔹 Материал: <i>${order.fasad_mat}</i>\n`;
-    if (order.fasad_model) text += `🔹 Фасад: <i>${order.fasad_model}</i>\n`;
+    if (order.fasad_model) text += `🔹 Текстура: <i>${order.fasad_model}</i>\n`;
     if (order.color) text += `🔹 Цвет: <i>${order.color}</i>\n`;
     if (order.color_patina) text += `🔹 Патина: <i>${order.color_patina}</i>\n`;
+    if (order.color_type) text += `🔹 Лак: <i>${order.color_type}</i>\n`;
+    
+    // Показываем цены только для Плательщиков, Администраторов, Менеджеров
+    if (showPrices && order.order_total_cost !== undefined) {
+      text += `\n💰 Стоимость: ${this.formatMoney(order.order_total_cost)}\n`;
+      if (order.order_pay !== undefined) {
+        text += `💵 Оплачено: ${this.formatMoney(order.order_pay)}\n`;
+      }
+      if (order.order_debt !== undefined && order.order_debt < 0) {
+        text += `⚠️ Долг: ${this.formatMoney(Math.abs(order.order_debt))}\n`;
+      }
+    }
 
-    text += `${'—'.repeat(22)}\n`;
-    text += `Номенклатуры:\n`;
+    return text;
+  }
+
+  /**
+   * Форматировать элементы заказа для отображения
+   */
+  formatOrderElementsForDisplay(elements: OrderElement[]): string {
+    if (elements.length === 0) {
+      return 'Нет элементов заказа.';
+    }
+
+    let text = `\n${'—'.repeat(22)}\n`;
     
     elements.forEach((el, index) => {
       text += `${index + 1}. <b>${el.name}</b>`;
@@ -197,13 +230,6 @@ export class OrdersService {
     });
 
     text += `${'—'.repeat(22)}\n`;
-    text += `💰 ${this.formatMoney(order.order_total_cost)} / ${this.formatMoney(order.order_pay)}\n`;
-    
-    if (order.order_debt < 0) {
-      text += `⚠️ Долг: ${this.formatMoney(Math.abs(order.order_debt))}\n`;
-    } else {
-      text += `✅ Оплачен\n`;
-    }
 
     return text;
   }

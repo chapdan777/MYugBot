@@ -8,6 +8,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { UseGuards } from '@nestjs/common';
 import { PaymentsService } from '../payments/payments.service';
 import { ShipmentsService } from '../shipments/shipments.service';
+import { OrdersService, Order } from '../orders/orders.service';
 import type { ExtendedContext } from './types';
 
 /**
@@ -16,11 +17,24 @@ import type { ExtendedContext } from './types';
  */
 @Update()
 export class BotUpdate {
+  // Хранилище последнего поискового запроса (общий для всех пользователей)
+  private lastSearchQuery: string = '38148';
+
   constructor(
     private readonly usersService: UsersService,
     private readonly paymentsService: PaymentsService,
     private readonly shipmentsService: ShipmentsService,
+    private readonly ordersService: OrdersService,
   ) {}
+
+  /**
+   * Проверка прав на просмотр цен
+   * Цены доступны только Плательщикам, Администраторам, Менеджерам
+   */
+  private canSeePrices(user: User): boolean {
+    const allowedRoles = ['Плательщик', 'Администратор', 'Менеджер'];
+    return !!user.role_name && allowedRoles.includes(user.role_name);
+  }
 
   /**
    * Обработка команды /start
@@ -54,7 +68,7 @@ export class BotUpdate {
     // Главное меню с inline клавиатурой
     await ctx.reply(
       `Главное меню\nВаша роль: ${user.role_name || 'Гость'}`,
-      this.getMainMenuKeyboard(user.group_id)
+      this.getMainMenuKeyboard(user.group_id, ctx.from.id)
     );
   }
 
@@ -82,6 +96,9 @@ export class BotUpdate {
           break;
         case 'shipments':
           await this.handleShipmentsAction(ctx, entity, id, params, user);
+          break;
+        case 'order':
+          await this.handleOrderAction(ctx, entity, id, params, user);
           break;
         case 'back':
           await this.handleBackNavigation(ctx, entity, id, user);
@@ -193,28 +210,36 @@ export class BotUpdate {
           })();
       const text = this.shipmentsService.formatShipmentDetailsForDisplay(details, driverName, shipmentDateObj);
       
-      // Edit the original message with the details
-      if (ctx.callbackQuery && ctx.callbackQuery.message) {
-        // If this was triggered by a callback query, edit that message
-        await ctx.editMessageText(text, {
-          reply_markup: {
-            inline_keyboard: [[{ text: '◀️ Назад', callback_data: `shipments:list:${isProfile ? 'profile' : 'facade'}` }]],
-          },
-          parse_mode: 'HTML',
-        } as any);
-      } else {
-        // If this was triggered by a command, delete the command message and edit the original list message
+      // Get saved message reference to edit it
+      const savedMessage = this.shipmentsService.getLastListMessage(user.id);
+      
+      if (savedMessage && ctx.telegram) {
+        // Edit the saved shipment list message
         try {
-          if (ctx.message && ctx.message.message_id) {
-            await ctx.deleteMessage(ctx.message.message_id);
-          }
+          await ctx.telegram.editMessageText(
+            savedMessage.chatId,
+            savedMessage.messageId,
+            undefined,
+            text,
+            {
+              reply_markup: {
+                inline_keyboard: [[{ text: '◀️ Назад', callback_data: `shipments:list:${isProfile ? 'profile' : 'facade'}` }]],
+              },
+              parse_mode: 'HTML',
+            } as any
+          );
         } catch (error) {
-          // Message may have already been deleted or not exist
-          console.debug('Не удалось удалить сообщение команды (возможно уже удалено):', error.message);
+          console.error('Не удалось отредактировать сообщение со списком:', error.message);
+          // Fallback: send new message if editing fails
+          await ctx.reply(text, {
+            reply_markup: {
+              inline_keyboard: [[{ text: '◀️ Назад', callback_data: `shipments:list:${isProfile ? 'profile' : 'facade'}` }]],
+            },
+            parse_mode: 'HTML',
+          } as any);
         }
-        
-        // Try to edit the original shipment list message
-        // We'll send a new message as fallback since we don't have a direct reference to the original message
+      } else {
+        // Fallback: send new message if no saved reference
         await ctx.reply(text, {
           reply_markup: {
             inline_keyboard: [[{ text: '◀️ Назад', callback_data: `shipments:list:${isProfile ? 'profile' : 'facade'}` }]],
@@ -323,28 +348,36 @@ export class BotUpdate {
           })();
       const text = this.shipmentsService.formatShipmentDetailsForDisplay(details, driverName, shipmentDateObj);
       
-      // Edit the original message with the details
-      if (ctx.callbackQuery && ctx.callbackQuery.message) {
-        // If this was triggered by a callback query, edit that message
-        await ctx.editMessageText(text, {
-          reply_markup: {
-            inline_keyboard: [[{ text: '◀️ Назад', callback_data: `shipments:list:${isProfile ? 'profile' : 'facade'}` }]],
-          },
-          parse_mode: 'HTML',
-        } as any);
-      } else {
-        // If this was triggered by a command, delete the command message and edit the original list message
+      // Get saved message reference to edit it
+      const savedMessage = this.shipmentsService.getLastListMessage(user.id);
+      
+      if (savedMessage && ctx.telegram) {
+        // Edit the saved shipment list message
         try {
-          if (ctx.message && ctx.message.message_id) {
-            await ctx.deleteMessage(ctx.message.message_id);
-          }
+          await ctx.telegram.editMessageText(
+            savedMessage.chatId,
+            savedMessage.messageId,
+            undefined,
+            text,
+            {
+              reply_markup: {
+                inline_keyboard: [[{ text: '◀️ Назад', callback_data: `shipments:list:${isProfile ? 'profile' : 'facade'}` }]],
+              },
+              parse_mode: 'HTML',
+            } as any
+          );
         } catch (error) {
-          // Message may have already been deleted or not exist
-          console.debug('Не удалось удалить сообщение команды (возможно уже удалено):', error.message);
+          console.error('Не удалось отредактировать сообщение со списком:', error.message);
+          // Fallback: send new message if editing fails
+          await ctx.reply(text, {
+            reply_markup: {
+              inline_keyboard: [[{ text: '◀️ Назад', callback_data: `shipments:list:${isProfile ? 'profile' : 'facade'}` }]],
+            },
+            parse_mode: 'HTML',
+          } as any);
         }
-        
-        // Try to edit the original shipment list message
-        // We'll send a new message as fallback since we don't have a direct reference to the original message
+      } else {
+        // Fallback: send new message if no saved reference
         await ctx.reply(text, {
           reply_markup: {
             inline_keyboard: [[{ text: '◀️ Назад', callback_data: `shipments:list:${isProfile ? 'profile' : 'facade'}` }]],
@@ -355,6 +388,80 @@ export class BotUpdate {
     } catch (error) {
       console.error('Ошибка получения деталей отгрузки:', error);
       await ctx.reply('❌ Ошибка получения деталей отгрузки');
+    }
+  }
+
+  /**
+   * Команда для просмотра деталей заказа
+   * Формат: /id39148
+   */
+  @Hears(/^\/id\d+$/)
+  async onOrderDetailCommand(@Ctx() ctx: ExtendedContext, @CurrentUser() user: User) {
+    if (!ctx.message || !('text' in ctx.message)) {
+      return;
+    }
+    
+    const command = ctx.message.text.trim();
+    const orderIdMatch = command.match(/^\/id(\d+)$/);
+    
+    if (!orderIdMatch) {
+      await ctx.reply('❌ Неверный формат команды');
+      return;
+    }
+    
+    const orderId = parseInt(orderIdMatch[1], 10);
+    
+    try {
+      // Delete the command message to keep chat clean
+      if (ctx.message && ctx.message.message_id) {
+        try {
+          await ctx.deleteMessage(ctx.message.message_id);
+        } catch (error) {
+          console.debug('Не удалось удалить сообщение команды:', error.message);
+        }
+      }
+      
+      await this.showOrderDetails(ctx, orderId, user);
+    } catch (error) {
+      console.error('Ошибка получения деталей заказа:', error);
+      await ctx.reply('❌ Ошибка получения деталей заказа');
+    }
+  }
+
+  /**
+   * Обработка текстовых сообщений - поиск заказов
+   */
+  @On('text')
+  async onText(@Ctx() ctx: ExtendedContext, @CurrentUser() user: User) {
+    if (!ctx.message || !('text' in ctx.message)) {
+      return;
+    }
+
+    const text = ctx.message.text.trim();
+    
+    // Игнорируем команды (начинающиеся с /)
+    if (text.startsWith('/')) {
+      return;
+    }
+
+    // Сохраняем последний поисковый запрос
+    this.lastSearchQuery = text;
+
+    try {
+      // Удаляем сообщение с запросом
+      if (ctx.message && ctx.message.message_id) {
+        try {
+          await ctx.deleteMessage(ctx.message.message_id);
+        } catch (error) {
+          console.debug('Не удалось удалить сообщение запроса:', error.message);
+        }
+      }
+
+      // Поиск заказов
+      await this.searchOrders(ctx, text, user);
+    } catch (error) {
+      console.error('Ошибка поиска заказов:', error);
+      await ctx.reply('❌ Ошибка поиска заказов');
     }
   }
 
@@ -371,23 +478,25 @@ export class BotUpdate {
   /**
    * Генерация главного меню с учетом прав пользователя
    */
-  private getMainMenuKeyboard(roleId: number) {
-    const keyboard = {
-      inline_keyboard: [
-        [
-          { text: '📚 Заказы', callback_data: 'menu:orders' },
-          { text: '👥 Пользователи', callback_data: 'menu:users' },
-          { text: '👤 Профиль', callback_data: 'menu:profile' },
-        ],
-        [
-          { text: '📦 Отгрузки', callback_data: 'menu:shipments' },
-          { text: '💰 Расходы', callback_data: 'menu:expenses' },
-          { text: '💳 Касса', callback_data: 'menu:payments' },
-        ],
-        [
-          { text: '🔍 Поиск', callback_data: 'menu:search' },
-        ],
+  private getMainMenuKeyboard(roleId: number, chatId?: number) {
+    const buttons = [
+      [
+        { text: '📚 Заказы', callback_data: 'menu:orders' },
+        { text: '👥 Пользователи', callback_data: 'menu:users' },
+        { text: '👤 Профиль', callback_data: 'menu:profile' },
       ],
+      [
+        { text: '📦 Отгрузки', callback_data: 'menu:shipments' },
+      ],
+    ];
+    
+    // Кнопка "Касса" доступна только для chatID 582657818 и 1805605563
+    if (chatId && (chatId === 582657818 || chatId === 1805605563)) {
+      buttons[1].push({ text: '💳 Касса', callback_data: 'menu:payments' });
+    }
+
+    const keyboard = {
+      inline_keyboard: buttons,
     };
 
     // Фильтрация доступных разделов по ролям
@@ -406,7 +515,7 @@ export class BotUpdate {
       // Возврат в главное меню
       await ctx.editMessageText(
         `Главное меню\nВаша роль: ${user.role_name || 'Гость'}`,
-        this.getMainMenuKeyboard(user.group_id)
+        this.getMainMenuKeyboard(user.group_id, ctx.from?.id)
       );
       return;
     }
@@ -418,6 +527,16 @@ export class BotUpdate {
 
     if (section === 'shipments') {
       await this.showShipmentsMainMenu(ctx, user);
+      return;
+    }
+
+    if (section === 'orders') {
+      await this.showOrdersMainMenu(ctx, user);
+      return;
+    }
+
+    if (section === 'profile') {
+      await this.showUserProfile(ctx, user);
       return;
     }
 
@@ -465,7 +584,7 @@ export class BotUpdate {
       // Возврат в главное меню
       await ctx.editMessageText(
         `Главное меню\nВаша роль: ${user.role_name || 'Гость'}`,
-        this.getMainMenuKeyboard(user.group_id)
+        this.getMainMenuKeyboard(user.group_id, ctx.from?.id)
       );
       return;
     }
@@ -514,6 +633,55 @@ export class BotUpdate {
           [
             { text: '📋 Фасады (5 последних)', callback_data: 'shipments:list:facade' },
           ],
+          [
+            { text: '◀️ Назад', callback_data: 'menu:main' },
+          ],
+          [
+            { text: '🏠 Главное меню', callback_data: 'menu:main' },
+          ],
+        ],
+      },
+      parse_mode: 'HTML',
+    } as any);
+  }
+
+  /**
+   * Меню "Заказы"
+   */
+  private async showOrdersMainMenu(ctx: ExtendedContext, user: User) {
+    await ctx.editMessageText(
+      `📚 Заказы\n\nℹ️ Для поиска заказа, набери текст, например: ${this.lastSearchQuery}`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '◀️ Назад', callback_data: 'menu:main' },
+            ],
+          ],
+        },
+        parse_mode: 'HTML',
+      } as any
+    );
+  }
+
+  /**
+   * Показать профиль пользователя
+   */
+  private async showUserProfile(ctx: ExtendedContext, user: User) {
+    let profileText = `👤 Профиль\n\n`;
+    profileText += `🆔 ID: ${user.id}\n`;
+    if (user.telegram_id) profileText += `📱 Telegram ID: ${user.telegram_id}\n`;
+    if (user.username) profileText += `👤 Username: @${user.username}\n`;
+    if (user.first_name) profileText += `👨 Имя: ${user.first_name}\n`;
+    if (user.last_name) profileText += `👨 Фамилия: ${user.last_name}\n`;
+    if (user.role_name) profileText += `💼 Роль: ${user.role_name}\n`;
+    if (user.group_id) profileText += `📂 Group ID: ${user.group_id}\n`;
+    profileText += `🔒 Зарегистрирован: ${user.is_registered ? '✅ Да' : '❌ Нет'}\n`;
+    profileText += `🚫 Заблокирован: ${user.is_blocked ? '✅ Да' : '❌ Нет'}\n`;
+
+    await ctx.editMessageText(profileText, {
+      reply_markup: {
+        inline_keyboard: [
           [
             { text: '◀️ Назад', callback_data: 'menu:main' },
           ],
@@ -612,7 +780,7 @@ export class BotUpdate {
         // Store the current shipments list in cache for later retrieval
         this.shipmentsService.setUserShipments(user.id, latestShipments);
         
-        await ctx.editMessageText(displayText, {
+        const sentMessage = await ctx.editMessageText(displayText, {
           reply_markup: {
             inline_keyboard: [
               [{ text: '◀️ Назад', callback_data: 'menu:shipments' }]
@@ -620,6 +788,15 @@ export class BotUpdate {
           },
           parse_mode: 'HTML',
         } as any);
+        
+        // Save the message reference for later editing
+        if (sentMessage && ctx.chat) {
+          this.shipmentsService.setLastListMessage(user.id, {
+            chatId: ctx.chat.id,
+            messageId: (sentMessage as any).message_id,
+            isProfile
+          });
+        }
       } catch (error) {
         console.error('Ошибка получения списка отгрузок:', error);
         await ctx.editMessageText(`❌ Ошибка получения отгрузок ${type}`, {
@@ -685,5 +862,200 @@ export class BotUpdate {
       },
       parse_mode: 'HTML',
     } as any);
+  }
+
+  /**
+   * Обработка действий с заказами
+   */
+  private async handleOrderAction(
+    ctx: ExtendedContext & { callbackQuery: any },
+    action: string,
+    id: string,
+    params: string[],
+    user: User,
+  ) {
+    await ctx.answerCbQuery();
+
+    if (action === 'show_elements') {
+      const orderId = parseInt(id, 10);
+      
+      try {
+        // Получаем заказ и элементы
+        const order = await this.ordersService.getOrderById(orderId);
+        
+        if (!order) {
+          await ctx.editMessageText(`❌ Заказ №${orderId} не найден`);
+          return;
+        }
+        
+        const elements = await this.ordersService.getOrderElements(orderId);
+        
+        // Форматируем шапку + элементы
+        const showPrices = this.canSeePrices(user);
+        const headerText = this.ordersService.formatOrderForDisplay(order, elements, showPrices);
+        const elementsText = this.ordersService.formatOrderElementsForDisplay(elements);
+        const fullText = headerText + elementsText;
+        
+        // Get saved message reference
+        const savedMessage = this.shipmentsService.getLastListMessage(user.id);
+        
+        await ctx.editMessageText(fullText, {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '◀️ Назад', callback_data: `shipments:list:${savedMessage?.isProfile ? 'profile' : 'facade'}` }],
+              [{ text: '🏠 Главное меню', callback_data: 'menu:main' }],
+            ],
+          },
+          parse_mode: 'HTML',
+        } as any);
+      } catch (error) {
+        console.error('Ошибка получения элементов заказа:', error);
+        await ctx.editMessageText('❌ Ошибка получения элементов заказа');
+      }
+    }
+  }
+
+  /**
+   * Поиск заказов по текстовому запросу
+   */
+  private async searchOrders(ctx: ExtendedContext, searchText: string, user: User) {
+    try {
+      // Проверяем, является ли запрос числом (ID заказа)
+      const isNumeric = /^\d+$/.test(searchText);
+      let orders: Order[] = [];
+
+      if (isNumeric) {
+        // Поиск по ID или номеру
+        orders = await this.ordersService.searchOrdersByIdOrNumber(searchText);
+      } else {
+        // Поиск по ключевым словам
+        const keywords = searchText.split(/\s+/).filter(k => k.length > 0);
+        orders = await this.ordersService.searchOrdersByKeywords(keywords);
+      }
+
+      if (orders.length === 0) {
+        await ctx.reply(`❌ Заказы по запросу "${searchText}" не найдены`, {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🏠 Главное меню', callback_data: 'menu:main' }],
+            ],
+          },
+        } as any);
+        return;
+      }
+
+      if (orders.length === 1) {
+        // Если найден только один заказ, сразу открываем его
+        await this.showOrderDetails(ctx, orders[0].id, user, true);
+        return;
+      }
+
+      // Если найдено несколько заказов, показываем список
+      let text = `🔍 Найдено заказов: ${orders.length}\n\n`;
+
+      orders.slice(0, 10).forEach((order, index) => {
+        text += `${index + 1}. Заказ №${order.id}`;
+        if (order.clientname) text += ` - ${order.clientname}`;
+        if (order.status_description) text += ` (${order.status_description})`;
+        text += `\n   📂 /id${order.id}\n\n`;
+      });
+
+      if (orders.length > 10) {
+        text += `\n... и ещё ${orders.length - 10} заказов. Уточните запрос.\n`;
+      }
+
+      await ctx.reply(text, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🏠 Главное меню', callback_data: 'menu:main' }],
+          ],
+        },
+        parse_mode: 'HTML',
+      } as any);
+    } catch (error) {
+      console.error('Ошибка поиска:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Показать детали заказа
+   */
+  private async showOrderDetails(ctx: ExtendedContext, orderId: number, user: User, fromSearch: boolean = false) {
+    // Получаем заказ и его элементы
+    const order = await this.ordersService.getOrderById(orderId);
+    
+    if (!order) {
+      await ctx.reply(`❌ Заказ №${orderId} не найден`, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🏠 Главное меню', callback_data: 'menu:main' }],
+          ],
+        },
+      } as any);
+      return;
+    }
+    
+    const elements = await this.ordersService.getOrderElements(orderId);
+    
+    // Форматируем шапку заказа
+    const showPrices = this.canSeePrices(user);
+    const headerText = this.ordersService.formatOrderForDisplay(order, elements, showPrices);
+    
+    // Get saved message reference (from shipments list or previous order view)
+    const savedMessage = this.shipmentsService.getLastListMessage(user.id);
+    
+    // Определяем кнопки навигации
+    const backButton = fromSearch 
+      ? { text: '◀️ Назад', callback_data: 'menu:orders' }
+      : savedMessage?.isProfile !== undefined
+        ? { text: '◀️ Назад', callback_data: `shipments:list:${savedMessage.isProfile ? 'profile' : 'facade'}` }
+        : { text: '◀️ Назад', callback_data: 'menu:orders' };
+    
+    if (savedMessage && ctx.telegram && !fromSearch) {
+      // Edit the saved message with order header
+      try {
+        await ctx.telegram.editMessageText(
+          savedMessage.chatId,
+          savedMessage.messageId,
+          undefined,
+          headerText,
+          {
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '📝 Показать элементы', callback_data: `order:show_elements:${orderId}` }],
+                [backButton],
+                [{ text: '🏠 Главное меню', callback_data: 'menu:main' }],
+              ],
+            },
+            parse_mode: 'HTML',
+          } as any
+        );
+        return;
+      } catch (error) {
+        console.debug('Не удалось отредактировать сообщение, отправляем новое:', error.message);
+      }
+    }
+    
+    // Fallback or for search results: send new message and save reference
+    const sentMessage = await ctx.reply(headerText, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '📝 Показать элементы', callback_data: `order:show_elements:${orderId}` }],
+          [backButton],
+          [{ text: '🏠 Главное меню', callback_data: 'menu:main' }],
+        ],
+      },
+      parse_mode: 'HTML',
+    } as any);
+    
+    // Save this message as the last list message for future edits
+    if (sentMessage && ctx.chat) {
+      this.shipmentsService.setLastListMessage(user.id, {
+        chatId: ctx.chat.id,
+        messageId: (sentMessage as any).message_id,
+        isProfile: undefined,
+      });
+    }
   }
 }
