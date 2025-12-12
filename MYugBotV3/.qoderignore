@@ -1,0 +1,6 @@
+node_modules
+dist
+*.log
+*.db
+Image-Line
+Studio One

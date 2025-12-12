@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  firebird:
+    image: jacobalberty/firebird:3.0
+    container_name: massiv-firebird
+    environment:
+      ISC_PASSWORD: masterkey
+      FIREBIRD_USER: SYSDBA
+      FIREBIRD_PASSWORD: masterkey
+    ports:
+      - "3050:3050"
+    volumes:
+      - ./db:/firebird/data
+    restart: unless-stopped
+    networks:
+      - massiv-network
+
+  # Telegram Bot (опционально, можно запускать отдельно)
+  # telegram-bot:
+  #   build: .
+  #   container_name: massiv-bot
+  #   depends_on:
+  #     - firebird
+  #   environment:
+  #     - CUBIC_DB_HOST=firebird
+  #     - ITM_DB_HOST=firebird
+  #   volumes:
+  #     - .:/app
+  #   networks:
+  #     - massiv-network
+
+networks:
+  massiv-network:
+    driver: bridge

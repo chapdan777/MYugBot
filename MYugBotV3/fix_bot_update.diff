@@ -1,0 +1,156 @@
+*** a/src/bot/bot.update.ts
+--- b/src/bot/bot.update.ts
+@@
+-        await ctx.editMessageText(displayText, {
+-          reply_markup: {
+-            inline_keyboard: [
+-              [{ text: '◀️ Назад', callback_data: 'menu:shipments' }]
+-            ],
+-          },
+-          parse_mode: 'HTML',
+-        } as any);
++        await ctx.editMessageText(displayText, {
++          reply_markup: {
++            inline_keyboard: [
++              [{ text: '◀️ Назад', callback_data: 'menu:shipments' }]
++            ],
++          },
++          parse_mode: 'HTML',
++        } as any);
++        // Save reference to the displayed shipments list message so later commands (/shp_...) can edit it.
++        try {
++          const msg = (ctx.callbackQuery && ctx.callbackQuery.message) || ctx.message;
++          if (msg && (msg as any).chat && (msg as any).message_id) {
++            const userId = user?.id ?? ctx.from?.id;
++            if (userId) {
++              this.shipmentsService.setLastListMessage(userId, {
++                chatId: (msg as any).chat.id,
++                messageId: (msg as any).message_id,
++                isProfile,
++              });
++            }
++          }
++        } catch (e) {
++          console.debug('Не удалось сохранить ссылку на сообщение списка отгрузок:', e?.message ?? e);
++        }
+@@
+-        // If this was triggered by a command, delete the command message and edit the original list message
+-        try {
+-          if (ctx.message && ctx.message.message_id) {
+-            await ctx.deleteMessage(ctx.message.message_id);
+-          }
+-        } catch (error) {
+-          // Message may have already been deleted or not exist
+-          console.debug('Не удалось удалить сообщение команды (возможно уже удалено):', error.message);
+-        }
+-        
+-        // Try to edit the original shipment list message
+-        // We'll send a new message as fallback since we don't have a direct reference to the original message
+-        await ctx.reply(text, {
+-          reply_markup: {
+-            inline_keyboard: [[{ text: '◀️ Назад', callback_data: `shipments:list:${isProfile ? 'profile' : 'facade'}` }]],
+-          },
+-          parse_mode: 'HTML',
+-        } as any);
++        // If this was triggered by a command, delete the command message (if present)
++        try {
++          if (ctx.message && ctx.message.message_id) {
++            await ctx.deleteMessage(ctx.message.message_id);
++          }
++        } catch (error) {
++          console.debug('Не удалось удалить сообщение команды (возможно уже удалено):', error?.message ?? error);
++        }
++
++        // Attempt to edit the previously saved shipments list message. Fallback to sending a new message if editing fails.
++        try {
++          const userId = user?.id ?? ctx.from?.id;
++          const lastMsg = userId ? this.shipmentsService.getLastListMessage(userId) : null;
++          const replyOptions = {
++            reply_markup: {
++              inline_keyboard: [[{ text: '◀️ Назад', callback_data: `shipments:list:${isProfile ? 'profile' : 'facade'}` }]],
++            },
++            parse_mode: 'HTML',
++          } as any;
++
++          if (lastMsg && lastMsg.chatId && lastMsg.messageId) {
++            await ctx.telegram.editMessageText(
++              lastMsg.chatId,
++              lastMsg.messageId,
++              undefined,
++              text,
++              replyOptions,
++            );
++            return;
++          }
++        } catch (err) {
++          console.debug('Не удалось отредактировать исходное сообщение списка (возможно удалено):', err?.message ?? err);
++        }
++
++        // Fallback — send a new message
++        await ctx.reply(text, {
++          reply_markup: {
++            inline_keyboard: [[{ text: '◀️ Назад', callback_data: `shipments:list:${isProfile ? 'profile' : 'facade'}` }]],
++          },
++          parse_mode: 'HTML',
++        } as any);
+@@
+-        // If this was triggered by a command, delete the command message and edit the original list message
+-        try {
+-          if (ctx.message && ctx.message.message_id) {
+-            await ctx.deleteMessage(ctx.message.message_id);
+-          }
+-        } catch (error) {
+-          // Message may have already been deleted or not exist
+-          console.debug('Не удалось удалить сообщение команды (возможно уже удалено):', error.message);
+-        }
+-        
+-        // Try to edit the original shipment list message
+-        // We'll send a new message as fallback since we don't have a direct reference to the original message
+-        await ctx.reply(text, {
+-          reply_markup: {
+-            inline_keyboard: [[{ text: '◀️ Назад', callback_data: `shipments:list:${isProfile ? 'profile' : 'facade'}` }]],
+-          },
+-          parse_mode: 'HTML',
+-        } as any);
++        // If this was triggered by a command, delete the command message (if present)
++        try {
++          if (ctx.message && ctx.message.message_id) {
++            await ctx.deleteMessage(ctx.message.message_id);
++          }
++        } catch (error) {
++          console.debug('Не удалось удалить сообщение команды (возможно уже удалено):', error?.message ?? error);
++        }
++
++        // Attempt to edit the previously saved shipments list message. Fallback to sending a new message if editing fails.
++        try {
++          const userId = user?.id ?? ctx.from?.id;
++          const lastMsg = userId ? this.shipmentsService.getLastListMessage(userId) : null;
++          const replyOptions = {
++            reply_markup: {
++              inline_keyboard: [[{ text: '◀️ Назад', callback_data: `shipments:list:${isProfile ? 'profile' : 'facade'}` }]],
++            },
++            parse_mode: 'HTML',
++          } as any;
++
++          if (lastMsg && lastMsg.chatId && lastMsg.messageId) {
++            await ctx.telegram.editMessageText(
++              lastMsg.chatId,
++              lastMsg.messageId,
++              undefined,
++              text,
++              replyOptions,
++            );
++            return;
++          }
++        } catch (err) {
++          console.debug('Не удалось отредактировать исходное сообщение списка (возможно удалено):', err?.message ?? err);
++        }
++
++        // Fallback — send a new message
++        await ctx.reply(text, {
++          reply_markup: {
++            inline_keyboard: [[{ text: '◀️ Назад', callback_data: `shipments:list:${isProfile ? 'profile' : 'facade'}` }]],
++          },
++          parse_mode: 'HTML',
++        } as any);
+*** end of patch
