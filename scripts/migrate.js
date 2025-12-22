@@ -15,6 +15,7 @@ console.log('🔧 Database Migration for MYugBotV3');
 console.log('Connecting to:', config.database);
 console.log('');
 
+// Проверяем, существует ли уже подключение к базе данных
 Firebird.attach(config, (err, db) => {
   if (err) {
     console.error('❌ Connection error:', err.message);
@@ -23,7 +24,24 @@ Firebird.attach(config, (err, db) => {
 
   console.log('✅ Connection established\n');
 
-  const migrations = [
+  // Проверяем, существуют ли уже нужные таблицы/объекты
+  db.query("SELECT COUNT(*) as COUNT FROM RDB$RELATIONS WHERE RDB$SYSTEM_FLAG=0 AND RDB$VIEW_BLR IS NULL AND RDB$RELATION_NAME='TG_USERS'", [], (err, result) => {
+    if (err) {
+      console.log('❌ Error checking TG_USERS table:', err.message);
+      db.detach(() => process.exit(1));
+      return;
+    }
+
+    if (result[0].COUNT > 0) {
+      console.log('⏭️  TG_USERS table already exists, skipping migrations\n');
+      db.detach(() => {
+        console.log('Connection closed');
+        process.exit(0);
+      });
+      return;
+    }
+
+    const migrations = [
     {
       name: 'Create TG_USERS table',
       query: `CREATE TABLE TG_USERS (
@@ -174,4 +192,5 @@ Firebird.attach(config, (err, db) => {
   }
 
   executeNext();
+});
 });

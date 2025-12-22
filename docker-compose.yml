@@ -23,7 +23,7 @@ services:
     #   - /path/to/database:/firebird/data
     
     # Network configuration (optional)
-    network_mode: "host"  # Use if database is on localhost
+    # network_mode: "host"  # Use if database is on localhost
     
     logging:
       driver: "json-file"
