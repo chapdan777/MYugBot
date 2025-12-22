@@ -5,7 +5,7 @@ This project is a re-engineered Telegram bot built with NestJS, Telegraf, and Ty
 ## Technologies Used
 *   **Framework**: NestJS
 *   **Telegram Bot Library**: Telegraf
-*   **Language**: TypeScript
+
 *   **Database**: Firebird Database (ITM DB)
 *   **Other**: npm, Docker
 
