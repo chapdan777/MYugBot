@@ -19,11 +19,11 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
     
     # Mount database file if it's local
-    # volumes:
-    #   - /path/to/database:/firebird/data
+    volumes:
+      - /mnt/2T/Archive/Work/FireBird\ DB/test:/firebird/data:ro
     
-    # Network configuration (optional)
-    # network_mode: "host"  # Use if database is on localhost
+    # Network configuration (required for local database access)
+    network_mode: "host"
     
     logging:
       driver: "json-file"

@@ -21,8 +21,13 @@ echo "--- Building and restarting Docker container ---"
 
 # Создаем .env файл, если его нет
 if [ ! -f .env ]; then
- cp .env.example .env
-  echo "!!! Created .env file from .env.example. Please fill it with your credentials. !!!"
+  if [ -f .env.production ]; then
+    cp .env.production .env
+    echo "!!! Created .env file from .env.production for production deployment. !!!"
+  else
+    cp .env.example .env
+    echo "!!! Created .env file from .env.example. Please fill it with your credentials. !!!"
+  fi
 fi
 
 # Пересобираем и перезапускаем контейнер
