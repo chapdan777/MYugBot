@@ -20,7 +20,7 @@ services:
     
     # Mount database file if it's local
     volumes:
-      - /mnt/2T/Archive/Work/FireBird\ DB/test:/firebird/data:ro
+      - /mnt/2T/Archive/Work/FireBird\ DB/test:/firebird/data:rw
     
     # Network configuration (required for local database access)
     network_mode: "host"

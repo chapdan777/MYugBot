@@ -3,7 +3,7 @@ set -e
 
 # Путь к директории проекта на сервере
 # Убедитесь, что этот путь соответствует вашему
-PROJECT_DIR="/var/www/myug-bot"
+PROJECT_DIR="/home/serg/Docker/MYugBot/MYugBot"
 
 echo "=== Deploying MYugBotV3 ==="
 
