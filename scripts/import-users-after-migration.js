@@ -118,7 +118,7 @@ function importUsers(db, usersData) {
           group_id, parent_id, phonenumber, card, cardowner,
           is_active, is_registered, is_blocked,
           created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
 
       const params = [
@@ -126,7 +126,16 @@ function importUsers(db, usersData) {
         user.first_name.substring(0, 255), // Ограничиваем длину
         user.last_name ? user.last_name.substring(0, 255) : '',   // Ограничиваем длину
         user.username ? user.username.substring(0, 255) : '',
-        user.group_id || 1
+        user.group_id || 1,
+        user.parent_id || null,
+        user.phonenumber ? user.phonenumber.substring(0, 50) : '',
+        user.card ? user.card.substring(0, 50) : '',
+        user.cardowner ? user.cardowner.substring(0, 255) : '',
+        user.is_active !== undefined ? user.is_active : 1,
+        user.is_registered !== undefined ? user.is_registered : 0,
+        user.is_blocked !== undefined ? user.is_blocked : 0,
+        new Date(user.created_at).toISOString().replace('T', ' ').replace('Z', ''),
+        new Date(user.updated_at).toISOString().replace('T', ' ').replace('Z', '')
       ];
 
       db.query(insertQuery, params, (err) => {
