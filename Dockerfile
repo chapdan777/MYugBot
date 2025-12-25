@@ -27,11 +27,11 @@ RUN npm ci --only=production
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist
 
-# Copy migration script
+# Copy migration scripts
 COPY scripts ./scripts
 
 # Expose port (optional, for health checks)
 EXPOSE 3000
 
-# Run migrations and start the bot
+# Run migrations (including user migration) and start the bot
 CMD ["sh", "-c", "node scripts/migrate.js && node dist/main"]
