@@ -606,10 +606,10 @@ export class BotUpdate {
             { text: '🥬 Капуста', callback_data: 'payments:balance' },
           ],
           [
-            { text: '📒 Журнал 7 дней', callback_data: 'payments:journal:7days' },
+            { text: '📒 Журнал 7 дней', callback_data: 'payments:journal:7days:page:1' },
           ],
           [
-            { text: '📘 Журнал сегодня', callback_data: 'payments:journal:today' },
+            { text: '📘 Журнал сегодня', callback_data: 'payments:journal:today:page:1' },
           ],
           [
             { text: '◀️ Назад', callback_data: 'menu:main' },
@@ -715,14 +715,16 @@ export class BotUpdate {
         break;
       }
       case 'journal': {
-        const period = id as '7days' | 'today'; // '7days' | 'today'
-        await this.showJournalWithFilters(ctx, period);
+        const period = id as '7days' | 'today';
+        const page = params[0] === 'page' ? parseInt(params[1], 10) : 1;
+        await this.showJournalWithFilters(ctx, period, 'all', page);
         break;
       }
       case 'filter': {
-        const period = id as '7days' | 'today'; // '7days' | 'today'
+        const period = id as '7days' | 'today';
         const direction = params[0] as 'income' | 'expense' | 'all';
-        await this.showJournalWithFilters(ctx, period, direction);
+        const page = params[1] === 'page' ? parseInt(params[2], 10) : 1;
+        await this.showJournalWithFilters(ctx, period, direction, page);
         break;
       }
       default:
@@ -823,6 +825,7 @@ export class BotUpdate {
     ctx: ExtendedContext & { callbackQuery: any },
     period: '7days' | 'today',
     direction: 'income' | 'expense' | 'all' = 'all',
+    page: number = 1,
   ) {
     const today = new Date();
     let entries =
@@ -842,8 +845,24 @@ export class BotUpdate {
       period === '7days'
         ? '📒 Журнал за 7 дней'
         : '📘 Журнал за сегодня';
+        
+    const limit = 10;
+    const { text: formattedText, totalPages } = this.paymentsService.formatCashFlowForDisplay(entries, page, limit);
 
-    const text = `${title}\n\n${this.paymentsService.formatCashFlowForDisplay(entries)}`;
+    const text = `${title}\n\n${formattedText}`;
+
+    const navigationButtons: { text: string; callback_data: string }[][] = [];
+    if (totalPages > 1) {
+      const row: { text: string; callback_data: string }[] = [];
+      if (page > 1) {
+        row.push({ text: '◀️ Назад', callback_data: `payments:filter:${period}:${direction}:page:${page - 1}` });
+      }
+      row.push({ text: `[ ${page} / ${totalPages} ]`, callback_data: ' ' }); // Просто текст
+      if (page < totalPages) {
+        row.push({ text: 'Вперед ▶️', callback_data: `payments:filter:${period}:${direction}:page:${page + 1}` });
+      }
+      navigationButtons.push(row);
+    }
 
     await ctx.editMessageText(text, {
       reply_markup: {
@@ -855,6 +874,7 @@ export class BotUpdate {
           [
             { text: '📊 Все', callback_data: `payments:filter:${period}:all` },
           ],
+          ...navigationButtons,
           [
             { text: '◀️ Назад', callback_data: 'back:payments' },
           ],

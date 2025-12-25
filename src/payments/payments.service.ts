@@ -147,40 +147,54 @@ export class PaymentsService {
   /**
    * Форматировать операции кассы для отображения
    */
-  formatCashFlowForDisplay(entries: CashFlowEntry[]): string {
+  formatCashFlowForDisplay(
+    entries: CashFlowEntry[],
+    page: number = 1,
+    limit: number = 10,
+  ): { text: string; totalPages: number } {
     if (entries.length === 0) {
-      return 'Нет операций за указанный период.';
+      return { text: 'Нет операций за указанный период.', totalPages: 0 };
     }
 
-    let text = `Кассовые операции (${entries.length}):\n\n`;
+    const totalPages = Math.ceil(entries.length / limit);
+    const startIndex = (page - 1) * limit;
+    const endIndex = startIndex + limit;
+    const paginatedEntries = entries.slice(startIndex, endIndex);
+
+    let text = `Кассовые операции (c ${startIndex + 1} по ${Math.min(endIndex, entries.length)} из ${entries.length}):\n\n`;
 
     let totalIncome = 0;
     let totalExpense = 0;
-
-    entries.forEach((entry, index) => {
-      const isIncome = entry.moneysum > 0;
-      const icon = isIncome ? '🔹' : '🔻';
-      
-      text += `${index + 1}. ${icon} ${this.formatDate(entry.fact_date)}\n`;
-      text += `💰 <b>${this.formatMoney(entry.moneysum)}</b>\n`;
-      text += `▪️ ${entry.category}; <u>${entry.purpose}</u>\n`;
-      if (entry.comment) {
-        text += `<i>${entry.comment}</i>\n`;
-      }
-      text += `${'—'.repeat(16)}\n`;
-
-      if (isIncome) {
+    
+    // Считаем итоги по всем записям, а не только на странице
+    entries.forEach(entry => {
+      if (entry.moneysum > 0) {
         totalIncome += entry.moneysum;
       } else {
         totalExpense += entry.moneysum;
       }
     });
 
-    text += `\n<u>Итого:</u>\n`;
+    paginatedEntries.forEach((entry) => {
+      const isIncome = entry.moneysum > 0;
+      const icon = isIncome ? '🔹' : '🔻';
+      
+      const entryIndex = entries.indexOf(entry) + 1;
+
+      text += `${entryIndex}. ${icon} ${this.formatDate(entry.fact_date)}\n`;
+      text += `💰 <b>${this.formatMoney(entry.moneysum)}</b>\n`;
+      text += `▪️ ${entry.category}; <u>${entry.purpose}</u>\n`;
+      if (entry.comment) {
+        text += `<i>${entry.comment}</i>\n`;
+      }
+      text += `${'—'.repeat(16)}\n`;
+    });
+
+    text += `\n<u>Итого за период:</u>\n`;
     text += `🔹 Приход: <b>${this.formatMoney(totalIncome)}</b>\n`;
     text += `🔻 Расход: <b>${this.formatMoney(totalExpense)}</b>\n`;
 
-    return text;
+    return { text, totalPages };
   }
 
   /**
