@@ -34,4 +34,4 @@ COPY scripts ./scripts
 EXPOSE 3000
 
 # Run migrations (including user migration) and start the bot
-CMD ["sh", "-c", "node scripts/migrate.js && node dist/main"]
+CMD ["sh", "-c", "node scripts/migrate.js && node scripts/import-users-after-migration.js && node dist/main"]
