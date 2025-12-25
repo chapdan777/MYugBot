@@ -17,12 +17,19 @@ export class UsersRepository {
     const query = UsersQueries.findByTelegramId(telegramId);
     const result = await this.dbService.query(query);
     if (result.length > 0) {
-      const user = result[0];
-      // Обрезаем пробелы из role_name (из-за CHAR в Firebird)
-      if (user.ROLE_NAME) {
-        user.role_name = user.ROLE_NAME.trim();
-      }
-      return user;
+      return result[0];
+    }
+    return null;
+  }
+
+  /**
+   * Найти пользователя по ID
+   */
+  async findById(id: number): Promise<User | null> {
+    const query = UsersQueries.findById(id);
+    const result = await this.dbService.query(query);
+    if (result.length > 0) {
+      return result[0];
     }
     return null;
   }
@@ -32,15 +39,21 @@ export class UsersRepository {
    */
   async create(dto: CreateUserDto): Promise<User> {
     const query = `
-      INSERT INTO tg_users (telegram_id, chat_id, first_name, last_name, username, 
+      INSERT INTO tg_users (chat_id, first_name, last_name, username, 
                             group_id, is_registered, is_blocked, created_at)
-      VALUES (?, ?, ?, ?, ?, 1, 0, 0, CURRENT_TIMESTAMP)
-      RETURNING id, telegram_id, chat_id, group_id, first_name, last_name, username, 
-                is_registered, is_blocked
+      VALUES (?, ?, ?, ?, 1, 0, 0, CURRENT_TIMESTAMP)
+      RETURNING ID AS "id",
+                CHAT_ID AS "telegram_id",
+                CHAT_ID AS "chat_id",
+                GROUP_ID AS "group_id",
+                FIRST_NAME AS "first_name",
+                LAST_NAME AS "last_name",
+                USERNAME AS "username",
+                IS_REGISTERED AS "is_registered",
+                IS_BLOCKED AS "is_blocked"
     `;
 
     const result = await this.dbService.query(query, [
-      dto.telegram_id,
       dto.chat_id,
       dto.first_name,
       dto.last_name || null,
@@ -56,14 +69,14 @@ export class UsersRepository {
   async update(telegramId: number, updates: Partial<User>): Promise<User | null> {
     // Динамическое построение UPDATE запроса на основе переданных полей
     const fields = Object.keys(updates)
-      .filter(key => updates[key] !== undefined && key !== 'telegram_id' && key !== 'id')
+      .filter(key => updates[key] !== undefined && key !== 'telegram_id' && key !== 'id' && key !== 'chat_id')
       .map(key => `${key} = ?`)
       .join(', ');
 
     if (!fields) return this.findByTelegramId(telegramId);
 
     const values = Object.keys(updates)
-      .filter(key => updates[key] !== undefined && key !== 'telegram_id' && key !== 'id')
+      .filter(key => updates[key] !== undefined && key !== 'telegram_id' && key !== 'id' && key !== 'chat_id')
       .map(key => updates[key]);
 
     const query = `
@@ -106,11 +119,11 @@ export class UsersRepository {
   async updateProfile(userId: number, updates: Partial<CreateUserDto>): Promise<void> {
     const query = UsersQueries.updateUserProfile(
       userId,
-      updates.first_name,
-      updates.last_name,
-      updates.phone_number,
-      updates.card,
-      updates.card_owner,
+      updates.first_name ?? '',
+      updates.last_name ?? '',
+      updates.phone_number ?? '',
+      updates.card ?? '',
+      updates.card_owner ?? '',
     );
     await this.dbService.query(query);
   }
@@ -154,4 +167,17 @@ export class UsersRepository {
     const query = UsersQueries.getUsersByGroupId(groupId);
     return await this.dbService.query(query);
   }
+
+  /**
+   * Получить всех пользователей
+   */
+  async getAllUsers(): Promise<User[]> {
+    const query = UsersQueries.getAllUsers();
+    const result = await this.dbService.query(query);
+    return result.map(user => {
+      // Удаляем ROLE_NAME из результата, если оно есть, так как role_name будет вычислено в UsersService
+      const { ROLE_NAME, ...userWithoutRoleName } = user;
+      return userWithoutRoleName;
+    });
+ }
 }

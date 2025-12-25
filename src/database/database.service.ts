@@ -49,9 +49,6 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
    * @returns Результат запроса
    */
   async query<T = any>(query: string, params: any[] = []): Promise<T[]> {
-    console.log(`DatabaseService: Выполнение запроса: ${query}`);
-    console.log(`DatabaseService: Параметры:`, params);
-    
     return new Promise((resolve, reject) => {
       this.pool.get((err, db) => {
         if (err) {
@@ -59,9 +56,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
           return reject(err);
         }
 
-        console.log('DatabaseService: Соединение получено, выполняем запрос...');
         db.query(query, params, (err, result) => {
-          console.log('DatabaseService: Запрос выполнен, возвращаем соединение в пул');
           db.detach(); // Возврат соединения в пул
 
           if (err) {
@@ -71,10 +66,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
             return reject(err);
           }
 
-          // Проверяем, что result определен, перед тем как получить его длину
-          const count = result ? result.length : 0;
-          console.log(`DatabaseService: Запрос выполнен успешно, получено ${count} записей`);
-          resolve(result);
+          resolve(result || []);
         });
       });
     });

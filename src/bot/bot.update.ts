@@ -10,6 +10,7 @@ import { PaymentsService } from '../payments/payments.service';
 import { ShipmentsService } from '../shipments/shipments.service';
 import { OrdersService, Order } from '../orders/orders.service';
 import type { ExtendedContext } from './types';
+import { InlineKeyboardButton } from 'telegraf/types';
 
 /**
  * Главный обработчик обновлений бота
@@ -56,16 +57,6 @@ export class BotUpdate {
       return;
     }
 
-    // TODO: Раскомментировать после первой регистрации
-    // if (!user.is_registered) {
-    //   await ctx.reply(
-    //     'Добро пожаловать! Ваша заявка на регистрацию отправлена администратору.\n' +
-    //     'После одобрения вы получите уведомление и сможете пользоваться ботом.'
-    //   );
-    //   return;
-    // }
-
-    // Главное меню с inline клавиатурой
     await ctx.reply(
       `Главное меню\nВаша роль: ${user.role_name || 'Гость'}`,
       this.getMainMenuKeyboard(user.group_id, ctx.from.id)
@@ -99,6 +90,9 @@ export class BotUpdate {
           break;
         case 'order':
           await this.handleOrderAction(ctx, entity, id, params, user);
+          break;
+        case 'users':
+          await this.handleUsersAction(ctx, entity, id, params, user);
           break;
         case 'back':
           await this.handleBackNavigation(ctx, entity, id, user);
@@ -421,7 +415,11 @@ export class BotUpdate {
         }
       }
       
-      await this.showOrderDetails(ctx, orderId, user);
+      // Проверяем, откуда пришел пользователь
+      const savedMessage = this.shipmentsService.getLastListMessage(user.id);
+      // Если есть сохраненное сообщение и оно из отгрузок - не из поиска
+      const fromSearch = !savedMessage || savedMessage.fromSearch !== false;
+      await this.showOrderDetails(ctx, orderId, user, fromSearch);
     } catch (error) {
       console.error('Ошибка получения деталей заказа:', error);
       await ctx.reply('❌ Ошибка получения деталей заказа');
@@ -540,6 +538,11 @@ export class BotUpdate {
       return;
     }
 
+    if (section === 'users') {
+      await this.showUsersMainMenu(ctx, user);
+      return;
+    }
+
     // TODO: Будет реализовано в соответствующих модулях
     await ctx.editMessageText(`Раздел: ${section}`, {
       reply_markup: {
@@ -649,7 +652,7 @@ export class BotUpdate {
    * Меню "Заказы"
    */
   private async showOrdersMainMenu(ctx: ExtendedContext, user: User) {
-    await ctx.editMessageText(
+    const sentMessage = await ctx.editMessageText(
       `📚 Заказы\n\nℹ️ Для поиска заказа, набери текст, например: ${this.lastSearchQuery}`,
       {
         reply_markup: {
@@ -662,6 +665,15 @@ export class BotUpdate {
         parse_mode: 'HTML',
       } as any
     );
+    
+    // Сохраняем сообщение меню "Заказы" для последующего редактирования результатами поиска
+    if (sentMessage && ctx.chat) {
+      this.shipmentsService.setLastListMessage(user.id, {
+        chatId: ctx.chat.id,
+        messageId: (sentMessage as any).message_id,
+        fromSearch: true,
+      });
+    }
   }
 
   /**
@@ -686,6 +698,61 @@ export class BotUpdate {
             { text: '◀️ Назад', callback_data: 'menu:main' },
           ],
         ],
+      },
+      parse_mode: 'HTML',
+    } as any);
+  }
+
+  /**
+   * Меню "Пользователи"
+   */
+  private async showUsersMainMenu(ctx: ExtendedContext, user: User, page = 1) {
+    // Проверка прав доступа
+    if (user.role_name !== 'Администратор') {
+      await ctx.editMessageText('❌ Доступ запрещен', {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '◀️ Назад', callback_data: 'menu:main' }],
+          ],
+        },
+      });
+      return;
+    }
+
+    const allUsers = await this.usersService.getAllUsers();
+    const usersPerPage = 5;
+    const totalPages = Math.ceil(allUsers.length / usersPerPage);
+    const startIndex = (page - 1) * usersPerPage;
+    const endIndex = startIndex + usersPerPage;
+    const usersOnPage = allUsers.slice(startIndex, endIndex);
+
+    const text = `👥 Пользователи (Страница ${page}/${totalPages})`;
+    const currentPage = page;
+
+    const userButtons: InlineKeyboardButton[][] = usersOnPage.map(user => ([
+      { text: `👁 ${user.first_name}`, callback_data: `users:view:${user.id}:page:${currentPage}` }
+    ]));
+
+    const navigationRow: InlineKeyboardButton[] = [];
+    if (totalPages > 1) {
+      if (page > 1) {
+        navigationRow.push({ text: '◀️', callback_data: `users:list:page:${page - 1}` });
+      }
+      navigationRow.push({ text: `[ ${page}/${totalPages} ]`, callback_data: ' ' });
+      if (page < totalPages) {
+        navigationRow.push({ text: '▶️', callback_data: `users:list:page:${page + 1}` });
+      }
+    }
+
+    const keyboard = [
+      ...userButtons,
+      navigationRow,
+      [{ text: '◀️ Назад', callback_data: 'menu:main' }],
+    ].filter(row => row.length > 0);
+
+    await ctx.editMessageText(text, {
+      reply_markup: {
+        inline_keyboard: keyboard,
       },
       parse_mode: 'HTML',
     } as any);
@@ -796,7 +863,8 @@ export class BotUpdate {
           this.shipmentsService.setLastListMessage(user.id, {
             chatId: ctx.chat.id,
             messageId: (sentMessage as any).message_id,
-            isProfile
+            isProfile,
+            fromSearch: false, // Маркер "из отгрузок"
           });
         }
       } catch (error) {
@@ -898,9 +966,12 @@ export class BotUpdate {
 
     if (action === 'show_elements') {
       const orderId = parseInt(id, 10);
+      // Параметр контекста: 'search' или 'shipment'
+      const context = params[0] || 'shipment';
+      const fromSearch = context === 'search';
       
       try {
-        console.log(`Попытка получения элементов заказа №${orderId} для пользователя ${user.id}`);
+        console.log(`Попытка получения элементов заказа №${orderId} для пользователя ${user.id}, контекст: ${context}`);
         
         // Получаем заказ и элементы
         const order = await this.ordersService.getOrderById(orderId);
@@ -921,14 +992,26 @@ export class BotUpdate {
         const elementsText = this.ordersService.formatOrderElementsForDisplay(elements);
         const fullText = headerText + elementsText;
         
-        // Get saved message reference
-        const savedMessage = this.shipmentsService.getLastListMessage(user.id);
+        // Определяем кнопку "Назад" в зависимости от контекста
+        let backButton;
+        if (fromSearch) {
+          // Из поиска - возвращаемся в меню заказов
+          backButton = { text: '◀️ Назад', callback_data: 'menu:orders' };
+        } else {
+          // Из отгрузок - проверяем savedMessage
+          const savedMessage = this.shipmentsService.getLastListMessage(user.id);
+          if (savedMessage && savedMessage.isProfile !== undefined) {
+            backButton = { text: '◀️ Назад', callback_data: `shipments:list:${savedMessage.isProfile ? 'profile' : 'facade'}` };
+          } else {
+            backButton = { text: '◀️ Назад', callback_data: 'menu:orders' };
+          }
+        }
         
         console.log(`Отправляем сообщение с элементами заказа №${orderId}`);
         await ctx.editMessageText(fullText, {
           reply_markup: {
             inline_keyboard: [
-              [{ text: '◀️ Назад', callback_data: `shipments:list:${savedMessage && savedMessage.isProfile !== undefined ? (savedMessage.isProfile ? 'profile' : 'facade') : 'profile'}` }],
+              [backButton],
               [{ text: '🏠 Главное меню', callback_data: 'menu:main' }],
             ],
           },
@@ -977,6 +1060,8 @@ export class BotUpdate {
 
       if (orders.length === 1) {
         // Если найден только один заказ, сразу открываем его
+        // Очищаем сохраненное сообщение из отгрузок
+        this.shipmentsService.clearLastListMessage(user.id);
         await this.showOrderDetails(ctx, orders[0].id, user, true);
         return;
       }
@@ -994,8 +1079,37 @@ export class BotUpdate {
       if (orders.length > 10) {
         text += `\n... и ещё ${orders.length - 10} заказов. Уточните запрос.\n`;
       }
-
-      await ctx.reply(text, {
+      
+      // Проверяем, есть ли сохраненное сообщение меню "Заказы"
+      const savedMessage = this.shipmentsService.getLastListMessage(user.id);
+      let sentMessage: any;
+      
+      if (savedMessage && savedMessage.fromSearch && ctx.telegram) {
+        // Редактируем сохраненное сообщение меню
+        try {
+          await ctx.telegram.editMessageText(
+            savedMessage.chatId,
+            savedMessage.messageId,
+            undefined,
+            text,
+            {
+              reply_markup: {
+                inline_keyboard: [
+                  [{ text: '🏠 Главное меню', callback_data: 'menu:main' }],
+                ],
+              },
+              parse_mode: 'HTML',
+            } as any
+          );
+          // Сохраняем ту же ссылку, так как сообщение осталось тем же
+          return; // Успешно отредактировали
+        } catch (error) {
+          console.debug('Не удалось отредактировать сообщение меню, отправляем новое:', error.message);
+        }
+      }
+      
+      // Fallback: отправляем новое сообщение
+      sentMessage = await ctx.reply(text, {
         reply_markup: {
           inline_keyboard: [
             [{ text: '🏠 Главное меню', callback_data: 'menu:main' }],
@@ -1003,6 +1117,15 @@ export class BotUpdate {
         },
         parse_mode: 'HTML',
       } as any);
+      
+      // Сохраняем сообщение со списком поиска для последующего редактирования
+      if (sentMessage && ctx.chat) {
+        this.shipmentsService.setLastListMessage(user.id, {
+          chatId: ctx.chat.id,
+          messageId: (sentMessage as any).message_id,
+          fromSearch: true, // Маркер "из поиска"
+        });
+      }
     } catch (error) {
       console.error('Ошибка поиска:', error);
       throw error;
@@ -1033,18 +1156,37 @@ export class BotUpdate {
     const showPrices = this.canSeePrices(user);
     const headerText = this.ordersService.formatOrderForDisplay(order, elements, showPrices);
     
-    // Get saved message reference (from shipments list or previous order view)
+    // Get saved message reference (from shipments list or search list)
     const savedMessage = this.shipmentsService.getLastListMessage(user.id);
+    console.log(`[showOrderDetails] savedMessage:`, JSON.stringify(savedMessage));
+    console.log(`[showOrderDetails] fromSearch parameter:`, fromSearch);
     
-    // Определяем кнопки навигации
-    const backButton = fromSearch
-      ? { text: '◀️ Назад', callback_data: 'menu:orders' }
-      : savedMessage && savedMessage.isProfile !== undefined
-        ? { text: '◀️ Назад', callback_data: `shipments:list:${savedMessage.isProfile ? 'profile' : 'facade'}` }
-        : { text: '◀️ Назад', callback_data: 'menu:orders' };
+    // Определяем кнопки навигации и callback для "Показать элементы"
+    let backButton;
+    let context: 'search' | 'shipment';
     
-    if (savedMessage && ctx.telegram && !fromSearch) {
-      // Edit the saved message with order header
+    if (fromSearch || (savedMessage && savedMessage.fromSearch)) {
+      // Из поиска
+      console.log(`[showOrderDetails] Context detected: SEARCH`);
+      backButton = { text: '◀️ Назад', callback_data: 'menu:orders' };
+      context = 'search';
+    } else if (savedMessage && savedMessage.isProfile !== undefined) {
+      // Из отгрузок
+      console.log(`[showOrderDetails] Context detected: SHIPMENT (isProfile=${savedMessage.isProfile})`);
+      backButton = { text: '◀️ Назад', callback_data: `shipments:list:${savedMessage.isProfile ? 'profile' : 'facade'}` };
+      context = 'shipment';
+    } else {
+      // По умолчанию
+      console.log(`[showOrderDetails] Context detected: DEFAULT (no saved message)`);
+      backButton = { text: '◀️ Назад', callback_data: 'menu:orders' };
+      context = 'search';
+    }
+    
+    // callback для кнопки "Показать элементы"
+    const showElementsCallback = `order:show_elements:${orderId}:${context}`;
+    
+    // Пытаемся отредактировать сохраненное сообщение (из отгрузок или поиска)
+    if (savedMessage && ctx.telegram) {
       try {
         await ctx.telegram.editMessageText(
           savedMessage.chatId,
@@ -1054,7 +1196,7 @@ export class BotUpdate {
           {
             reply_markup: {
               inline_keyboard: [
-                [{ text: '📝 Показать элементы', callback_data: `order:show_elements:${orderId}` }],
+                [{ text: '📝 Показать элементы', callback_data: showElementsCallback }],
                 [backButton],
                 [{ text: '🏠 Главное меню', callback_data: 'menu:main' }],
               ],
@@ -1062,17 +1204,18 @@ export class BotUpdate {
             parse_mode: 'HTML',
           } as any
         );
+        // Успешно отредактировали, выходим
         return;
       } catch (error) {
         console.debug('Не удалось отредактировать сообщение, отправляем новое:', error.message);
       }
     }
     
-    // Fallback or for search results: send new message and save reference
+    // Fallback: отправляем новое сообщение, если не удалось отредактировать
     const sentMessage = await ctx.reply(headerText, {
       reply_markup: {
         inline_keyboard: [
-          [{ text: '📝 Показать элементы', callback_data: `order:show_elements:${orderId}` }],
+          [{ text: '📝 Показать элементы', callback_data: showElementsCallback }],
           [backButton],
           [{ text: '🏠 Главное меню', callback_data: 'menu:main' }],
         ],
@@ -1080,13 +1223,171 @@ export class BotUpdate {
       parse_mode: 'HTML',
     } as any);
     
-    // Save this message as the last list message for future edits
+    // Сохраняем новое сообщение
     if (sentMessage && ctx.chat) {
       this.shipmentsService.setLastListMessage(user.id, {
         chatId: ctx.chat.id,
         messageId: (sentMessage as any).message_id,
-        isProfile: undefined,
+        fromSearch: context === 'search',
+        isProfile: context === 'shipment' ? savedMessage?.isProfile : undefined,
       });
     }
+  }
+
+  /**
+   * Обработка действий пользователей
+   */
+  private async handleUsersAction(
+    ctx: ExtendedContext & { callbackQuery: any },
+    action: string,
+    id: string,
+    params: string[],
+    user: User,
+  ) {
+    await ctx.answerCbQuery();
+
+    switch (action) {
+      case 'list': {
+        const page = params[0] === 'page' ? parseInt(params[1], 10) : 1;
+        await this.showUsersMainMenu(ctx, user, page);
+        break;
+      }
+      case 'view': {
+        const userId = parseInt(id, 10);
+        const fromPage = params[0] === 'page' ? parseInt(params[1], 10) : 1;
+        await this.showUserView(ctx, userId, fromPage);
+        break;
+      }
+      case 'toggle_block': {
+        const userId = parseInt(id, 10);
+        const isBlocked = params[0] === '1';
+        const fromPage = parseInt(params[1], 10);
+        if (isBlocked) {
+          await this.usersService.unblockUser(userId);
+        } else {
+          await this.usersService.blockUser(userId);
+        }
+        await this.showUserView(ctx, userId, fromPage);
+        break;
+      }
+      case 'register': {
+        const userId = parseInt(id, 10);
+        const fromPage = parseInt(params[0], 10);
+        await this.usersService.registerUser(userId);
+        await this.showUserView(ctx, userId, fromPage);
+        break;
+      }
+      case 'change_role_menu': {
+        const userId = parseInt(id, 10);
+        const fromPage = parseInt(params[0], 10);
+        await this.showChangeRoleMenu(ctx, userId, fromPage);
+        break;
+      }
+      case 'change_role': {
+        const userId = parseInt(id, 10);
+        const roleId = parseInt(params[0], 10);
+        const fromPage = parseInt(params[1], 10);
+        await this.usersService.updateGroup(userId, roleId);
+        await this.showUserView(ctx, userId, fromPage);
+        break;
+      }
+    }
+  }
+
+  /**
+   * Показать профиль конкретного пользователя (админ-панель)
+   */
+  private async showUserView(ctx: ExtendedContext, userId: number, fromPage: number) {
+    const user = await this.usersService.findById(userId);
+
+    if (!user) {
+      await ctx.editMessageText('❌ Пользователь не найден', {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '◀️ Назад', callback_data: `users:list:page:${fromPage}` }],
+          ],
+        },
+      });
+      return;
+    }
+
+    let profileText = `👤 Профиль пользователя\n\n`;
+    profileText += `🆔 ID: ${user.id}\n`;
+    if (user.telegram_id) profileText += `📱 Telegram ID: ${user.telegram_id}\n`;
+    if (user.username) profileText += `👤 Username: @${user.username}\n`;
+    if (user.first_name) profileText += `👨 Имя: ${user.first_name}\n`;
+    if (user.last_name) profileText += `👨 Фамилия: ${user.last_name}\n`;
+    if (user.role_name) profileText += `💼 Роль: ${user.role_name}\n`;
+    if (user.group_id) profileText += `📂 Group ID: ${user.group_id}\n`;
+    profileText += `🔒 Зарегистрирован: ${user.is_registered ? '✅ Да' : '❌ Нет'}\n`;
+    profileText += `🚫 Заблокирован: ${user.is_blocked ? '✅ Да' : '❌ Нет'}\n`;
+
+    const keyboard: InlineKeyboardButton[][] = [];
+
+    keyboard.push([
+      {
+        text: `🚫 ${user.is_blocked ? 'Анблок' : 'Блок'}`,
+        callback_data: `users:toggle_block:${user.id}:${user.is_blocked ? 1 : 0}:${fromPage}`,
+      },
+    ]);
+
+    if (!user.is_registered) {
+      keyboard.push([
+        {
+          text: '✅ Зарегистрировать',
+          callback_data: `users:register:${user.id}:${fromPage}`,
+        },
+      ]);
+    }
+
+    keyboard.push([
+      {
+        text: '💼 Изменить роль',
+        callback_data: `users:change_role_menu:${user.id}:${fromPage}`,
+      },
+    ]);
+
+    keyboard.push([
+      { text: '◀️ Назад', callback_data: `users:list:page:${fromPage}` },
+    ]);
+
+    await ctx.editMessageText(profileText, {
+      reply_markup: {
+        inline_keyboard: keyboard,
+      },
+      parse_mode: 'HTML',
+    } as any);
+  }
+
+  /**
+   * Показать меню смены роли
+   */
+  private async showChangeRoleMenu(ctx: ExtendedContext, userId: number, fromPage: number) {
+    const roles = await this.usersService.getRoles();
+    const user = await this.usersService.findById(userId);
+
+    if (!user) {
+      await ctx.editMessageText('❌ Пользователь не найден');
+      return;
+    }
+
+    const roleButtons: InlineKeyboardButton[][] = roles.map(role => ([
+      {
+        text: `${user.group_id === role.id ? '✅' : ''} ${role.name}`,
+        callback_data: `users:change_role:${userId}:${role.id}:${fromPage}`,
+      }
+    ]));
+
+    const text = `Выберите новую роль для ${user.first_name}`;
+
+    await ctx.editMessageText(text, {
+      reply_markup: {
+        inline_keyboard: [
+          ...roleButtons,
+          [{ text: '◀️ Назад', callback_data: `users:view:${userId}:page:${fromPage}` }],
+        ],
+      },
+      parse_mode: 'HTML',
+    } as any);
   }
 }

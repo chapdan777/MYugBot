@@ -4,23 +4,52 @@
  */
 
 export const UsersQueries = {
+  // Get all users
+  getAllUsers: () => `
+    SELECT
+      u.ID AS "id",
+      u.CHAT_ID AS "telegram_id",
+      u.CHAT_ID AS "chat_id",
+      u.GROUP_ID AS "group_id",
+      u.FIRST_NAME AS "first_name",
+      u.LAST_NAME AS "last_name",
+      u.USERNAME AS "username",
+      u.IS_REGISTERED AS "is_registered",
+      u.IS_BLOCKED AS "is_blocked"
+    FROM tg_users u
+    ORDER BY u.ID
+  `,
+
+  // Find user by ID
+  findById: (id: number) => `
+    SELECT
+      u.ID AS "id",
+      u.CHAT_ID AS "telegram_id",
+      u.CHAT_ID AS "chat_id",
+      u.GROUP_ID AS "group_id",
+      u.FIRST_NAME AS "first_name",
+      u.LAST_NAME AS "last_name",
+      u.USERNAME AS "username",
+      u.IS_REGISTERED AS "is_registered",
+      u.IS_BLOCKED AS "is_blocked"
+    FROM tg_users u
+    WHERE u.ID = ${id}
+  `,
+
   // Find user by Telegram ID
   findByTelegramId: (telegramId: number) => `
-    SELECT u.id, u.chat_id as telegram_id, u.chat_id, u.group_id, 
-           u.first_name, u.last_name, u.username,
-           u.is_registered, u.is_blocked,
-           CASE u.group_id
-             WHEN 1 THEN 'Guest'
-             WHEN 2 THEN 'Client'
-             WHEN 3 THEN 'Agent'
-             WHEN 4 THEN 'Contractor'
-             WHEN 5 THEN 'Payer'
-             WHEN 6 THEN 'Manager'
-             WHEN 7 THEN 'Administrator'
-             ELSE 'Guest'
-           END as role_name
+    SELECT
+      u.ID AS "id",
+      u.CHAT_ID AS "telegram_id",
+      u.CHAT_ID AS "chat_id",
+      u.GROUP_ID AS "group_id",
+      u.FIRST_NAME AS "first_name",
+      u.LAST_NAME AS "last_name",
+      u.USERNAME AS "username",
+      u.IS_REGISTERED AS "is_registered",
+      u.IS_BLOCKED AS "is_blocked"
     FROM tg_users u
-    WHERE u.chat_id = ${telegramId}
+    WHERE u.CHAT_ID = ${telegramId}
   `,
 
   // Create new user
