@@ -9,6 +9,7 @@ export interface ShipmentSummary {
   driver_name: string;
   box: number;
   amount: number;
+  debt: number;
 }
 
 
@@ -20,6 +21,7 @@ export interface ShipmentDetail {
   clientname: string;
   box_count: number;
   amount: number;
+  debt: number;
 }
 
 /**
@@ -62,15 +64,7 @@ clearLastListMessage(userId: number) {
    * Получить список отгрузок (профиль или фасады)
    */
   async getShipmentsList(isProfile: boolean): Promise<ShipmentSummary[]> {
-    try {
-      const shipments = await this.shipmentsRepository.getShipmentsList(isProfile);
-      console.log(`[ShipmentsService] Got ${shipments.length} shipments for isProfile=${isProfile}`);
-      console.log('[ShipmentsService] First shipment sample:', shipments[0]);
-      return shipments;
-    } catch (error) {
-      console.error('[ShipmentsService] Error getting shipments list:', error);
-      throw error;
-    }
+    return await this.shipmentsRepository.getShipmentsList(isProfile);
   }
 
   /**
@@ -81,15 +75,7 @@ clearLastListMessage(userId: number) {
     shipmentDate: string | Date,
     isProfile: boolean,
   ): Promise<ShipmentDetail[]> {
-    try {
-      console.log(`[ShipmentsService] Getting shipment details: driver=${driverName}, date=${shipmentDate}, isProfile=${isProfile}`);
-      const details = await this.shipmentsRepository.getShipmentDetails(driverName, shipmentDate, isProfile);
-      console.log(`[ShipmentsService] Got ${details.length} detail records`);
-      return details;
-    } catch (error) {
-      console.error('[ShipmentsService] Error getting shipment details:', error);
-      throw error;
-    }
+    return await this.shipmentsRepository.getShipmentDetails(driverName, shipmentDate, isProfile);
   }
 
   /**
@@ -194,9 +180,14 @@ clearLastListMessage(userId: number) {
         const orderId = order.id || 'Неизвестный';
         const boxCount = order.box_count || 0;
         const amount = order.amount || 0;
+        const debt = order.debt || 0;
         
         text += `${index + 1}. Заказ № ${orderId}\n`;
-        text += `   ${boxCount} уп / ${this.formatMoney(amount)}\n`;
+        text += `   ${boxCount} уп / ${this.formatMoney(amount)}`;
+        if (debt > 0) {
+          text += ` | 🔴 Долг: ${this.formatMoney(debt)}`;
+        }
+        text += `\n`;
         text += `   📂 /id${orderId}\n`;
       });
 

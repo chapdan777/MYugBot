@@ -6,7 +6,10 @@
 export const ShipmentsQueries = {
   // Get shipments list for profile or facades
   getShipmentsList: (isProfile: boolean) => `
-    SELECT J.FACT_DATE_OUT, J.DRIVER_NAME, SUM(J.BOX_COUNT) AS BOX, SUM(O.ORDER_TOTAL_COST) AS AMOUNT
+    SELECT J.FACT_DATE_OUT, J.DRIVER_NAME, 
+           SUM(J.BOX_COUNT) AS BOX, 
+           SUM(O.ORDER_TOTAL_COST) AS AMOUNT,
+           SUM(O.ORDER_TOTAL_COST - O.ORDER_PAY) AS DEBT
     FROM ORDERS O
     INNER JOIN JOURNAL_OUT J ON (J.ORDER_ID = O.ID)
     INNER JOIN CLIENTS C ON (O.CLIENT = C.CLIENTNAME)
@@ -17,7 +20,9 @@ export const ShipmentsQueries = {
 
   // Get shipment details by date and driver
   getShipmentDetails: (isProfile: boolean) => `
-    SELECT O.ID, C.CLIENTNAME, J.BOX_COUNT, O.ORDER_TOTAL_COST as AMOUNT
+    SELECT O.ID, C.CLIENTNAME, J.BOX_COUNT, 
+           O.ORDER_TOTAL_COST as AMOUNT,
+           (O.ORDER_TOTAL_COST - O.ORDER_PAY) as DEBT
     FROM ORDERS O
     INNER JOIN JOURNAL_OUT J on (J.ORDER_ID = O.ID)
     INNER JOIN CLIENTS C on (O.CLIENT = C.CLIENTNAME)

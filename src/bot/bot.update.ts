@@ -140,17 +140,18 @@ export class BotUpdate {
     
     const isProfile = type === 'pr';
     
-    // Get the latest 5 shipments, matching the logic in the list view
-    const latestShipments = (await this.shipmentsService.getShipmentsList(isProfile)).slice(0, 5);
+    // Get ALL shipments to find the correct one by absolute index
+    const allShipments = await this.shipmentsService.getShipmentsList(isProfile);
     
-    // Validate that the index is valid for the latest shipments
-    if (!latestShipments || index >= latestShipments.length) {
+    // Validate that the index is valid for all shipments (index is 1-based, convert to 0-based)
+    const arrayIndex = displayIndex - 1;
+    if (!allShipments || arrayIndex < 0 || arrayIndex >= allShipments.length) {
       await ctx.reply('❌ Данные отгрузки не найдены или индекс устарел. Пожалуйста, откройте список отгрузок заново.');
       return;
     }
     
     // Get the specific shipment data
-    const shipment = latestShipments[index];
+    const shipment = allShipments[arrayIndex];
     const driverName = shipment.driver_name;
     // Pass the Date object directly to preserve timezone
     const shipmentDate = shipment.fact_date_out;
@@ -246,17 +247,17 @@ export class BotUpdate {
     
     const isProfile = type === 'profile';
 
-    // Get the latest 5 shipments, matching the logic in the list view
-    const latestShipments = (await this.shipmentsService.getShipmentsList(isProfile)).slice(0, 5);
+    // Get ALL shipments to find the correct one by absolute index
+    const allShipments = await this.shipmentsService.getShipmentsList(isProfile);
     
-    // Validate that the index is valid
-    if (!latestShipments || index < 0 || index >= latestShipments.length) {
+    // Validate that the index is valid (0-based)
+    if (!allShipments || index < 0 || index >= allShipments.length) {
       await ctx.reply('❌ Данные отгрузки не найдены или индекс устарел. Пожалуйста, откройте список отгрузок заново.');
       return;
     }
     
     // Get the specific shipment data
-    const shipment = latestShipments[index];
+    const shipment = allShipments[index];
     const driverName = shipment.driver_name;
     // Pass the Date object directly to preserve timezone
     const shipmentDate = shipment.fact_date_out;
@@ -612,10 +613,10 @@ export class BotUpdate {
       reply_markup: {
         inline_keyboard: [
           [
-            { text: '📋 Профиль (5 последних)', callback_data: 'shipments:list:profile' },
+            { text: '📋 Профиль', callback_data: 'shipments:list:profile:page:1' },
           ],
           [
-            { text: '📋 Фасады (5 последних)', callback_data: 'shipments:list:facade' },
+            { text: '📋 Фасады', callback_data: 'shipments:list:facade:page:1' },
           ],
           [
             { text: '◀️ Назад', callback_data: 'menu:main' },
@@ -790,23 +791,25 @@ export class BotUpdate {
 
     if (action === 'list') {
       const isProfile = id === 'profile';
+      // Extract page from params or default to 1
+      const page = params[0] === 'page' ? parseInt(params[1], 10) || 1 : 1;
       const type = isProfile ? 'профиля' : 'фасадов';
-      console.log(`[handleShipmentsAction] Requesting ${type} (isProfile=${isProfile})`);
       
       try {
-        console.log(`[handleShipmentsAction] Fetching shipments list for isProfile=${isProfile}`);
-        // Получаем последние 5 отгрузок
-        const shipments = await this.shipmentsService.getShipmentsList(isProfile);
-        const latestShipments = shipments.slice(0, 5);
-        console.log(`[handleShipmentsAction] Got ${latestShipments.length} latest shipments`);
+        // Получаем все отгрузки
+        const allShipments = await this.shipmentsService.getShipmentsList(isProfile);
+        const perPage = 10;
+        const totalPages = Math.ceil(allShipments.length / perPage);
+        const startIndex = (page - 1) * perPage;
+        const endIndex = startIndex + perPage;
+        const pageShipments = allShipments.slice(startIndex, endIndex);
         
-        // Создаем текст со ссылками на команды в формате как в примере
-        let displayText = `Отгрузки ${type} (${latestShipments.length}):\n\n`;
+        // Создаем текст со ссылками на команды
+        let displayText = `Отгрузки ${type} (Стр. ${page}/${totalPages})\n\n`;
         
-        latestShipments.forEach((shipment, index) => {
+        pageShipments.forEach((shipment, index) => {
           // Handle potentially undefined shipment properties
           if (!shipment.fact_date_out || !shipment.driver_name) {
-            console.warn('Пропущена отгрузка с отсутствующими данными:', shipment);
             return;
           }
           
@@ -816,38 +819,48 @@ export class BotUpdate {
             if (shipment.fact_date_out instanceof Date) {
               displayDate = shipment.fact_date_out.toLocaleDateString('ru-RU');
             } else if (typeof shipment.fact_date_out === 'string') {
-              // Try to parse the string as a date
               const parsedDate = new Date(shipment.fact_date_out);
-              if (isNaN(parsedDate.getTime())) {
-                console.error(`Invalid date format: ${shipment.fact_date_out}`);
-                displayDate = String(shipment.fact_date_out);
-              } else {
-                displayDate = parsedDate.toLocaleDateString('ru-RU');
-              }
+              displayDate = isNaN(parsedDate.getTime()) ? String(shipment.fact_date_out) : parsedDate.toLocaleDateString('ru-RU');
             } else {
-              console.error(`Unexpected date type: ${typeof shipment.fact_date_out}`, shipment.fact_date_out);
               displayDate = String(shipment.fact_date_out);
             }
           } catch (error) {
-            console.error('Error formatting date:', error, shipment.fact_date_out);
             displayDate = String(shipment.fact_date_out);
           }
           
-          // Create a compact command link for each shipment (starting from 1, not 0)
+          // Create a compact command link for each shipment (using absolute index)
           const commandType = isProfile ? 'pr' : 'fa';
-          const displayIndex = index + 1; // Start from 1 instead of 0
-          displayText += `${displayIndex}. ${displayDate} /shp_${commandType}${displayIndex}\n`;
+          const absoluteIndex = startIndex + index + 1; // Absolute position in all shipments (1-based)
+          displayText += `${index + 1}. ${displayDate} /shp_${commandType}${absoluteIndex}\n`;
           displayText += `🚚 Водитель: ${shipment.driver_name}\n`;
           displayText += `📦 Упаковок: ${shipment.box !== undefined ? shipment.box : 0}\n`;
-          displayText += `💰 Сумма: ${new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB' }).format(shipment.amount !== undefined ? shipment.amount : 0)}\n`;
+          displayText += `💰 Сумма: ${new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB' }).format(shipment.amount !== undefined ? shipment.amount : 0)}`;
+          if (shipment.debt && shipment.debt > 0) {
+            displayText += ` | 🔴 Долг: ${new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB' }).format(shipment.debt)}`;
+          }
+          displayText += `\n`;
           displayText += `${'—'.repeat(16)}\n`;
         });
         
+        // Создаем кнопки навигации
+        const keyboard: any[] = [];
+        if (totalPages > 1) {
+          const navRow: any[] = [];
+          if (page > 1) {
+            navRow.push({ text: '◀️ Назад', callback_data: `shipments:list:${isProfile ? 'profile' : 'facade'}:page:${page - 1}` });
+          }
+          if (page < totalPages) {
+            navRow.push({ text: 'Вперёд ▶️', callback_data: `shipments:list:${isProfile ? 'profile' : 'facade'}:page:${page + 1}` });
+          }
+          if (navRow.length > 0) {
+            keyboard.push(navRow);
+          }
+        }
+        keyboard.push([{ text: '◀️ В меню отгрузок', callback_data: 'menu:shipments' }]);
+        
         const sentMessage = await ctx.editMessageText(displayText, {
           reply_markup: {
-            inline_keyboard: [
-              [{ text: '◀️ Назад', callback_data: 'menu:shipments' }]
-            ],
+            inline_keyboard: keyboard,
           },
           parse_mode: 'HTML',
         } as any);
@@ -863,7 +876,6 @@ export class BotUpdate {
         }
       } catch (error) {
         console.error('Ошибка получения списка отгрузок:', error);
-        console.error('Детали ошибки:', error.stack);
         await ctx.editMessageText(`❌ Ошибка получения отгрузок ${type}`, {
           reply_markup: {
             inline_keyboard: [[{ text: '◀️ Назад', callback_data: 'menu:shipments' }]],
@@ -966,20 +978,14 @@ export class BotUpdate {
       const fromSearch = context === 'search';
       
       try {
-        console.log(`Попытка получения элементов заказа №${orderId} для пользователя ${user.id}, контекст: ${context}`);
-        
-        // Получаем заказ и элементы
         const order = await this.ordersService.getOrderById(orderId);
         
         if (!order) {
-          console.log(`Заказ №${orderId} не найден в базе данных`);
           await ctx.editMessageText(`❌ Заказ №${orderId} не найден`);
           return;
         }
         
-        console.log(`Заказ №${orderId} найден, получаем элементы...`);
         const elements = await this.ordersService.getOrderElements(orderId);
-        console.log(`Получено ${elements.length} элементов для заказа №${orderId}`);
         
         // Форматируем шапку + элементы
         const showPrices = this.canSeePrices(user);
@@ -1002,7 +1008,6 @@ export class BotUpdate {
           }
         }
         
-        console.log(`Отправляем сообщение с элементами заказа №${orderId}`);
         await ctx.editMessageText(fullText, {
           reply_markup: {
             inline_keyboard: [
@@ -1153,26 +1158,18 @@ export class BotUpdate {
     
     // Get saved message reference (from shipments list or search list)
     const savedMessage = this.shipmentsService.getLastListMessage(user.id);
-    console.log(`[showOrderDetails] savedMessage:`, JSON.stringify(savedMessage));
-    console.log(`[showOrderDetails] fromSearch parameter:`, fromSearch);
     
     // Определяем кнопки навигации и callback для "Показать элементы"
     let backButton;
     let context: 'search' | 'shipment';
     
     if (fromSearch || (savedMessage && savedMessage.fromSearch)) {
-      // Из поиска
-      console.log(`[showOrderDetails] Context detected: SEARCH`);
       backButton = { text: '◀️ Назад', callback_data: 'menu:orders' };
       context = 'search';
     } else if (savedMessage && savedMessage.isProfile !== undefined) {
-      // Из отгрузок
-      console.log(`[showOrderDetails] Context detected: SHIPMENT (isProfile=${savedMessage.isProfile})`);
       backButton = { text: '◀️ Назад', callback_data: `shipments:list:${savedMessage.isProfile ? 'profile' : 'facade'}` };
       context = 'shipment';
     } else {
-      // По умолчанию
-      console.log(`[showOrderDetails] Context detected: DEFAULT (no saved message)`);
       backButton = { text: '◀️ Назад', callback_data: 'menu:orders' };
       context = 'search';
     }

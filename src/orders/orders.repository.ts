@@ -56,12 +56,8 @@ export class OrdersRepository {
    */
   async getOrderElements(orderId: number): Promise<OrderElement[]> {
     try {
-      console.log(`Репозиторий заказов: формирование запроса для заказа №${orderId}`);
       const query = OrdersQueries.getOrderElements(orderId);
-      console.log(`Репозиторий заказов: выполнение запроса для заказа №${orderId}: ${query}`);
-      
       const results = await this.dbService.query(query);
-      console.log(`Репозиторий заказов: получено ${results.length} записей для заказа №${orderId}`);
       
       // Map database fields (uppercase) to interface fields (lowercase)
       const mappedResults = results.map(row => {
@@ -77,15 +73,9 @@ export class OrdersRepository {
         };
       });
       
-      console.log(`Репозиторий заказов: маппинг завершен, возвращаем ${mappedResults.length} элементов`);
       return mappedResults;
     } catch (error) {
       console.error(`Репозиторий заказов: ошибка получения элементов для заказа №${orderId}:`, error);
-      console.error('Детали ошибки:', {
-        orderId: orderId,
-        errorMessage: error.message,
-        errorStack: error.stack,
-      });
       throw error;
     }
   }
