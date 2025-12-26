@@ -11,13 +11,6 @@ export interface ShipmentSummary {
   amount: number;
 }
 
-// Simple in-memory cache for storing shipment data by user ID
-interface UserShipmentCache {
-  [userId: number]: {
-    shipments: ShipmentSummary[];
-    timestamp: number;
-  };
-}
 
 /**
  * Shipment details interface
@@ -34,9 +27,7 @@ export interface ShipmentDetail {
  */
 @Injectable()
 export class ShipmentsService {
-  // In-memory cache for user shipment data (expires after 1 hour)
-  private userShipmentCache: UserShipmentCache = {};
-///************************ */
+  ///************************ */
   
   // Map to store last shown shipments-list message per user (in-memory).
 // Format: userId -> { chatId: number, messageId: number, isProfile?: boolean, fromSearch?: boolean }
@@ -65,55 +56,21 @@ clearLastListMessage(userId: number) {
 
 ///************************ */
   
-  constructor(private readonly shipmentsRepository: ShipmentsRepository) {
-    // Clean up expired cache entries periodically
-    setInterval(() => this.cleanupExpiredCache(), 60 * 60 * 1000); // Every hour
-  }
-  
-  /**
-   * Clean up expired cache entries (older than 1 hour)
-   */
-  private cleanupExpiredCache() {
-    const oneHourAgo = Date.now() - (60 * 60 * 1000);
-    for (const userId in this.userShipmentCache) {
-      if (this.userShipmentCache[userId].timestamp < oneHourAgo) {
-        delete this.userShipmentCache[userId];
-      }
-    }
-  }
-  
-  /**
-   * Store shipment data for a user
-   */
-  setUserShipments(userId: number, shipments: ShipmentSummary[]) {
-    this.userShipmentCache[userId] = {
-      shipments,
-      timestamp: Date.now()
-    };
-  }
-  
-  /**
-   * Get shipment data for a user
-   */
-  getUserShipments(userId: number): ShipmentSummary[] | null {
-    const cached = this.userShipmentCache[userId];
-    if (!cached) return null;
-    
-    // Check if cache is expired (older than 1 hour)
-    const oneHourAgo = Date.now() - (60 * 60 * 1000);
-    if (cached.timestamp < oneHourAgo) {
-      delete this.userShipmentCache[userId];
-      return null;
-    }
-    
-    return cached.shipments;
-  }
+  constructor(private readonly shipmentsRepository: ShipmentsRepository) {}
 
   /**
    * Получить список отгрузок (профиль или фасады)
    */
   async getShipmentsList(isProfile: boolean): Promise<ShipmentSummary[]> {
-    return await this.shipmentsRepository.getShipmentsList(isProfile);
+    try {
+      const shipments = await this.shipmentsRepository.getShipmentsList(isProfile);
+      console.log(`[ShipmentsService] Got ${shipments.length} shipments for isProfile=${isProfile}`);
+      console.log('[ShipmentsService] First shipment sample:', shipments[0]);
+      return shipments;
+    } catch (error) {
+      console.error('[ShipmentsService] Error getting shipments list:', error);
+      throw error;
+    }
   }
 
   /**
@@ -121,10 +78,18 @@ clearLastListMessage(userId: number) {
    */
   async getShipmentDetails(
     driverName: string,
-    shipmentDate: string,
+    shipmentDate: string | Date,
     isProfile: boolean,
   ): Promise<ShipmentDetail[]> {
-    return await this.shipmentsRepository.getShipmentDetails(driverName, shipmentDate, isProfile);
+    try {
+      console.log(`[ShipmentsService] Getting shipment details: driver=${driverName}, date=${shipmentDate}, isProfile=${isProfile}`);
+      const details = await this.shipmentsRepository.getShipmentDetails(driverName, shipmentDate, isProfile);
+      console.log(`[ShipmentsService] Got ${details.length} detail records`);
+      return details;
+    } catch (error) {
+      console.error('[ShipmentsService] Error getting shipment details:', error);
+      throw error;
+    }
   }
 
   /**

@@ -15,7 +15,12 @@ export class ShipmentsRepository {
    */
   async getShipmentsList(isProfile: boolean): Promise<ShipmentSummary[]> {
     const query = ShipmentsQueries.getShipmentsList(isProfile);
+    console.log('[ShipmentsRepository] Executing query:', query);
     const results = await this.dbService.query(query);
+    console.log(`[ShipmentsRepository] Query returned ${results.length} rows`);
+    if (results.length > 0) {
+      console.log('[ShipmentsRepository] First row sample:', results[0]);
+    }
     
     // Map database fields (uppercase) to interface fields (lowercase)
     return results.map(row => ({
@@ -31,12 +36,24 @@ export class ShipmentsRepository {
    */
   async getShipmentDetails(
     driverName: string,
-    shipmentDate: string,
+    shipmentDate: string | Date,
     isProfile: boolean,
   ): Promise<ShipmentDetail[]> {
-    const query = ShipmentsQueries.getShipmentDetails(driverName, shipmentDate, isProfile);
-    console.log('Executing shipment details query:', query);
-    const results = await this.dbService.query(query);
+    const query = ShipmentsQueries.getShipmentDetails(isProfile);
+    // Convert Date to 'YYYY-MM-DD' format for Firebird DATE comparison
+    let dateParam: string;
+    if (shipmentDate instanceof Date) {
+      // Use local date (not UTC) to match how dates are displayed
+      const year = shipmentDate.getFullYear();
+      const month = String(shipmentDate.getMonth() + 1).padStart(2, '0');
+      const day = String(shipmentDate.getDate()).padStart(2, '0');
+      dateParam = `${year}-${month}-${day}`;
+    } else {
+      dateParam = shipmentDate;
+    }
+    const params = [driverName, dateParam];
+    console.log('Executing shipment details query:', query, params);
+    const results = await this.dbService.query(query, params);
     console.log('Shipment details query results:', results);
     
     // Map database fields (uppercase) to interface fields (lowercase)

@@ -138,47 +138,22 @@ export class BotUpdate {
       return;
     }
     
-    // Get the stored shipments from cache (if available)
-    const storedShipments = this.shipmentsService.getUserShipments(user.id);
+    const isProfile = type === 'pr';
     
-    // Validate that we have the stored shipments and the index is valid
-    if (!storedShipments || !Array.isArray(storedShipments) || index >= storedShipments.length) {
-      await ctx.reply('❌ Данные отгрузки не найдены. Пожалуйста, откройте список отгрузок заново.');
+    // Get the latest 5 shipments, matching the logic in the list view
+    const latestShipments = (await this.shipmentsService.getShipmentsList(isProfile)).slice(0, 5);
+    
+    // Validate that the index is valid for the latest shipments
+    if (!latestShipments || index >= latestShipments.length) {
+      await ctx.reply('❌ Данные отгрузки не найдены или индекс устарел. Пожалуйста, откройте список отгрузок заново.');
       return;
     }
     
     // Get the specific shipment data
-    const shipment = storedShipments[index];
-    const isProfile = type === 'pr';
+    const shipment = latestShipments[index];
     const driverName = shipment.driver_name;
-    // Handle different date formats properly - preserve original date without timezone conversion
-    let shipmentDate: string;
-    if (shipment.fact_date_out instanceof Date) {
-      // Format date as YYYY-MM-DD without timezone conversion
-      const year = shipment.fact_date_out.getFullYear();
-      const month = String(shipment.fact_date_out.getMonth() + 1).padStart(2, '0');
-      const day = String(shipment.fact_date_out.getDate()).padStart(2, '0');
-      shipmentDate = `${year}-${month}-${day}`;
-    } else if (typeof shipment.fact_date_out === 'string') {
-      // If it's already a string in YYYY-MM-DD format, use it directly
-      if ((shipment.fact_date_out as string).match(/^\d{4}-\d{2}-\d{2}$/)) {
-        shipmentDate = shipment.fact_date_out;
-      } else {
-        // Otherwise, try to parse and format it properly
-        const dateObj = new Date(shipment.fact_date_out);
-        const year = dateObj.getFullYear();
-        const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-        const day = String(dateObj.getDate()).padStart(2, '0');
-        shipmentDate = `${year}-${month}-${day}`;
-      }
-    } else {
-      // Try to parse the date and format it properly
-      const dateObj = new Date(shipment.fact_date_out);
-      const year = dateObj.getFullYear();
-      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-      const day = String(dateObj.getDate()).padStart(2, '0');
-      shipmentDate = `${year}-${month}-${day}`;
-    }
+    // Pass the Date object directly to preserve timezone
+    const shipmentDate = shipment.fact_date_out;
     
     try {
       // Delete the command message to keep chat clean
@@ -194,15 +169,8 @@ export class BotUpdate {
       // Получаем детали отгрузки
       const details = await this.shipmentsService.getShipmentDetails(driverName, shipmentDate, isProfile);
       
-      // Форматируем для отображения
-      const shipmentDateObj: Date = shipmentDate.includes('T') 
-        ? new Date(shipmentDate)
-        : (() => {
-            // Assume YYYY-MM-DD format
-            const parts = shipmentDate.split('-');
-            return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
-          })();
-      const text = this.shipmentsService.formatShipmentDetailsForDisplay(details, driverName, shipmentDateObj);
+      // Форматируем для отображения (shipmentDate is already a Date object)
+      const text = this.shipmentsService.formatShipmentDetailsForDisplay(details, driverName, shipmentDate as Date);
       
       // Get saved message reference to edit it
       const savedMessage = this.shipmentsService.getLastListMessage(user.id);
@@ -276,47 +244,22 @@ export class BotUpdate {
       return;
     }
     
-    // Get the stored shipments from cache (if available)
-    const storedShipments = this.shipmentsService.getUserShipments(user.id);
+    const isProfile = type === 'profile';
+
+    // Get the latest 5 shipments, matching the logic in the list view
+    const latestShipments = (await this.shipmentsService.getShipmentsList(isProfile)).slice(0, 5);
     
-    // Validate that we have the stored shipments and the index is valid
-    if (!storedShipments || !Array.isArray(storedShipments) || index < 0 || index >= storedShipments.length) {
-      await ctx.reply('❌ Данные отгрузки не найдены. Пожалуйста, откройте список отгрузок заново.');
+    // Validate that the index is valid
+    if (!latestShipments || index < 0 || index >= latestShipments.length) {
+      await ctx.reply('❌ Данные отгрузки не найдены или индекс устарел. Пожалуйста, откройте список отгрузок заново.');
       return;
     }
     
     // Get the specific shipment data
-    const shipment = storedShipments[index];
-    const isProfile = type === 'profile';
+    const shipment = latestShipments[index];
     const driverName = shipment.driver_name;
-    // Handle different date formats properly - preserve original date without timezone conversion
-    let shipmentDate: string;
-    if (shipment.fact_date_out instanceof Date) {
-      // Format date as YYYY-MM-DD without timezone conversion
-      const year = shipment.fact_date_out.getFullYear();
-      const month = String(shipment.fact_date_out.getMonth() + 1).padStart(2, '0');
-      const day = String(shipment.fact_date_out.getDate()).padStart(2, '0');
-      shipmentDate = `${year}-${month}-${day}`;
-    } else if (typeof shipment.fact_date_out === 'string') {
-      // If it's already a string in YYYY-MM-DD format, use it directly
-      if ((shipment.fact_date_out as string).match(/^\d{4}-\d{2}-\d{2}$/)) {
-        shipmentDate = shipment.fact_date_out;
-      } else {
-        // Otherwise, try to parse and format it properly
-        const dateObj = new Date(shipment.fact_date_out);
-        const year = dateObj.getFullYear();
-        const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-        const day = String(dateObj.getDate()).padStart(2, '0');
-        shipmentDate = `${year}-${month}-${day}`;
-      }
-    } else {
-      // Try to parse the date and format it properly
-      const dateObj = new Date(shipment.fact_date_out);
-      const year = dateObj.getFullYear();
-      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-      const day = String(dateObj.getDate()).padStart(2, '0');
-      shipmentDate = `${year}-${month}-${day}`;
-    }
+    // Pass the Date object directly to preserve timezone
+    const shipmentDate = shipment.fact_date_out;
     
     try {
       // Delete the command message to keep chat clean
@@ -332,15 +275,8 @@ export class BotUpdate {
       // Получаем детали отгрузки
       const details = await this.shipmentsService.getShipmentDetails(driverName, shipmentDate, isProfile);
       
-      // Форматируем для отображения
-      const shipmentDateObj: Date = shipmentDate.includes('T') 
-        ? new Date(shipmentDate)
-        : (() => {
-            // Assume YYYY-MM-DD format
-            const parts = shipmentDate.split('-');
-            return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
-          })();
-      const text = this.shipmentsService.formatShipmentDetailsForDisplay(details, driverName, shipmentDateObj);
+      // Форматируем для отображения (shipmentDate is already a Date object)
+      const text = this.shipmentsService.formatShipmentDetailsForDisplay(details, driverName, shipmentDate as any);
       
       // Get saved message reference to edit it
       const savedMessage = this.shipmentsService.getLastListMessage(user.id);
@@ -855,14 +791,14 @@ export class BotUpdate {
     if (action === 'list') {
       const isProfile = id === 'profile';
       const type = isProfile ? 'профиля' : 'фасадов';
+      console.log(`[handleShipmentsAction] Requesting ${type} (isProfile=${isProfile})`);
       
       try {
+        console.log(`[handleShipmentsAction] Fetching shipments list for isProfile=${isProfile}`);
         // Получаем последние 5 отгрузок
         const shipments = await this.shipmentsService.getShipmentsList(isProfile);
         const latestShipments = shipments.slice(0, 5);
-        
-        // Форматируем для отображения
-        const text = this.shipmentsService.formatShipmentsListForDisplay(latestShipments, type);
+        console.log(`[handleShipmentsAction] Got ${latestShipments.length} latest shipments`);
         
         // Создаем текст со ссылками на команды в формате как в примере
         let displayText = `Отгрузки ${type} (${latestShipments.length}):\n\n`;
@@ -874,8 +810,28 @@ export class BotUpdate {
             return;
           }
           
-          // Format date for display
-          const displayDate = shipment.fact_date_out.toLocaleDateString('ru-RU');
+          // Format date for display - safe conversion
+          let displayDate: string;
+          try {
+            if (shipment.fact_date_out instanceof Date) {
+              displayDate = shipment.fact_date_out.toLocaleDateString('ru-RU');
+            } else if (typeof shipment.fact_date_out === 'string') {
+              // Try to parse the string as a date
+              const parsedDate = new Date(shipment.fact_date_out);
+              if (isNaN(parsedDate.getTime())) {
+                console.error(`Invalid date format: ${shipment.fact_date_out}`);
+                displayDate = String(shipment.fact_date_out);
+              } else {
+                displayDate = parsedDate.toLocaleDateString('ru-RU');
+              }
+            } else {
+              console.error(`Unexpected date type: ${typeof shipment.fact_date_out}`, shipment.fact_date_out);
+              displayDate = String(shipment.fact_date_out);
+            }
+          } catch (error) {
+            console.error('Error formatting date:', error, shipment.fact_date_out);
+            displayDate = String(shipment.fact_date_out);
+          }
           
           // Create a compact command link for each shipment (starting from 1, not 0)
           const commandType = isProfile ? 'pr' : 'fa';
@@ -886,9 +842,6 @@ export class BotUpdate {
           displayText += `💰 Сумма: ${new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB' }).format(shipment.amount !== undefined ? shipment.amount : 0)}\n`;
           displayText += `${'—'.repeat(16)}\n`;
         });
-        
-        // Store the current shipments list in cache for later retrieval
-        this.shipmentsService.setUserShipments(user.id, latestShipments);
         
         const sentMessage = await ctx.editMessageText(displayText, {
           reply_markup: {
@@ -910,6 +863,7 @@ export class BotUpdate {
         }
       } catch (error) {
         console.error('Ошибка получения списка отгрузок:', error);
+        console.error('Детали ошибки:', error.stack);
         await ctx.editMessageText(`❌ Ошибка получения отгрузок ${type}`, {
           reply_markup: {
             inline_keyboard: [[{ text: '◀️ Назад', callback_data: 'menu:shipments' }]],

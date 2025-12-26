@@ -5,45 +5,26 @@
 
 export const ShipmentsQueries = {
   // Get shipments list for profile or facades
-  getShipmentsList: (isProfile: boolean) => {
-    const profilerCondition = isProfile ? '= 1' : '!= 1';
-    return `
-      SELECT J.FACT_DATE_OUT, 
-             J.DRIVER_NAME, 
-             SUM(J.BOX_COUNT) AS BOX, 
-             SUM(O.ORDER_TOTAL_COST) AS AMOUNT
-      FROM ORDERS O
-      INNER JOIN JOURNAL_OUT J ON (J.ORDER_ID = O.ID)
-      LEFT JOIN CLIENTS C ON (O.CLIENT = C.CLIENTNAME)
-      WHERE C.PROFILER ${profilerCondition}
-      GROUP BY J.FACT_DATE_OUT, J.DRIVER_NAME
-      ORDER BY J.FACT_DATE_OUT DESC
-    `;
-  },
+  getShipmentsList: (isProfile: boolean) => `
+    SELECT J.FACT_DATE_OUT, J.DRIVER_NAME, SUM(J.BOX_COUNT) AS BOX, SUM(O.ORDER_TOTAL_COST) AS AMOUNT
+    FROM ORDERS O
+    INNER JOIN JOURNAL_OUT J ON (J.ORDER_ID = O.ID)
+    INNER JOIN CLIENTS C ON (O.CLIENT = C.CLIENTNAME)
+    WHERE ${isProfile ? 'C.PROFILER = 1' : '(C.PROFILER != 1 OR C.PROFILER IS NULL)'}
+    GROUP BY J.FACT_DATE_OUT, J.DRIVER_NAME
+    ORDER BY J.FACT_DATE_OUT DESC
+  `,
 
   // Get shipment details by date and driver
-  getShipmentDetails: (driverName: string, shipmentDate: string, isProfile: boolean) => {
-    const profilerCondition = isProfile ? '= 1' : '!= 1';
-    // Ensure date is in proper format for database comparison
-    let formattedDate = shipmentDate;
-    if (shipmentDate.includes('T')) {
-      // Convert ISO date to YYYY-MM-DD format
-      formattedDate = shipmentDate.split('T')[0];
-    }
-    return `
-      SELECT o.ID,
-             c.CLIENTNAME,
-             j.BOX_COUNT AS BOX_COUNT,
-             o.ORDER_TOTAL_COST AS AMOUNT
-      FROM ORDERS o
-      INNER JOIN JOURNAL_OUT j ON (j.ORDER_ID = o.ID)
-      LEFT JOIN CLIENTS c ON (o.CLIENT = c.CLIENTNAME)
-      WHERE c.PROFILER ${profilerCondition} AND
-            UPPER(j.DRIVER_NAME) = '${driverName.toUpperCase()}' AND
-            j.FACT_DATE_OUT = '${formattedDate}'
-      GROUP BY o.ID, c.CLIENTNAME, j.BOX_COUNT, o.ORDER_TOTAL_COST
-    `;
-  },
+  getShipmentDetails: (isProfile: boolean) => `
+    SELECT O.ID, C.CLIENTNAME, J.BOX_COUNT, O.ORDER_TOTAL_COST as AMOUNT
+    FROM ORDERS O
+    INNER JOIN JOURNAL_OUT J on (J.ORDER_ID = O.ID)
+    INNER JOIN CLIENTS C on (O.CLIENT = C.CLIENTNAME)
+    WHERE ${isProfile ? 'C.PROFILER = 1' : '(C.PROFILER != 1 OR C.PROFILER IS NULL)'}
+    AND J.DRIVER_NAME = ?
+    AND CAST(J.FACT_DATE_OUT AS DATE) = ?
+  `,
 
   // Get packed orders notification data
   getPackedOrdersForNotification: (lastPackedId: number) => `
@@ -53,9 +34,9 @@ export const ShipmentsQueries = {
            COALESCE(O.ORDER_TOTAL_COST, 0) AS ORDER_TOTAL_COST,
            COALESCE(O.ORDER_PAY, 0) AS ORDER_PAY, C.PROFILER 
     FROM JOURNAL_UPACK P
-    LEFT JOIN ORDERS O ON (P.ORDER_ID = O.ID)
-    LEFT JOIN CLIENTS C ON (O.CLIENT = C.CLIENTNAME)
-    LEFT JOIN EMPLOYERS E ON (O.MANAGER = E.NAME)
+    INNER JOIN ORDERS O ON (P.ORDER_ID = O.ID)
+    INNER JOIN CLIENTS C ON (O.CLIENT = C.CLIENTNAME)
+    INNER JOIN EMPLOYERS E ON (O.MANAGER = E.NAME)
     WHERE P.ID > ${lastPackedId}
     ORDER BY P.ID DESC
   `,
