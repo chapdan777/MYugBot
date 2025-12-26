@@ -7,7 +7,8 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci
+RUN npm config set network-timeout 300000
+RUN --mount=type=cache,target=/root/.npm npm ci
 
 # Copy source code
 COPY . .
@@ -22,7 +23,8 @@ WORKDIR /app
 
 # Install only production dependencies
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm config set network-timeout 300000
+RUN --mount=type=cache,target=/root/.npm npm ci --only=production
 
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist
