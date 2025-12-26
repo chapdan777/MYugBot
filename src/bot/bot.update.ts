@@ -477,28 +477,54 @@ export class BotUpdate {
    * Генерация главного меню с учетом прав пользователя
    */
   private getMainMenuKeyboard(roleId: number, chatId?: number) {
-    const buttons = [
-      [
-        { text: '📚 Заказы', callback_data: 'menu:orders' },
-        { text: '👥 Пользователи', callback_data: 'menu:users' },
-        { text: '👤 Профиль', callback_data: 'menu:profile' },
-      ],
-      [
-        { text: '📦 Отгрузки', callback_data: 'menu:shipments' },
-      ],
-    ];
+    const allButtons = {
+      orders: { text: '📚 Заказы', callback_data: 'menu:orders' },
+      shipments: { text: '📦 Отгрузки', callback_data: 'menu:shipments' },
+      payments: { text: '💳 Касса', callback_data: 'menu:payments' },
+      users: { text: '👥 Пользователи', callback_data: 'menu:users' },
+      profile: { text: '👤 Профиль', callback_data: 'menu:profile' },
+    };
+
+    let availableButtons: InlineKeyboardButton[] = [allButtons.profile];
+
+    // Роли: 1 - Гость, 6 - Менеджер, 7 - Администратор
+    switch (roleId) {
+      case 7: // Администратор
+        availableButtons.unshift(allButtons.users);
+        availableButtons.unshift(allButtons.shipments);
+        availableButtons.unshift(allButtons.orders);
+        break;
+      case 6: // Менеджер
+        availableButtons.unshift(allButtons.shipments);
+        availableButtons.unshift(allButtons.orders);
+        break;
+      case 1: // Гость
+        // Только профиль
+        break;
+    }
+
+    // Добавляем "Кассу" для администраторов или специальных chatId
+    if (roleId === 7 || (chatId && [582657818, 1805605563].includes(chatId))) {
+      // Вставляем кассу после отгрузок для админа, или просто добавляем
+      const shipmentsIndex = availableButtons.findIndex(
+        b => 'callback_data' in b && b.callback_data === 'menu:shipments'
+      );
+      if (shipmentsIndex !== -1) {
+        availableButtons.splice(shipmentsIndex + 1, 0, allButtons.payments);
+      } else {
+        availableButtons.push(allButtons.payments);
+      }
+    }
     
-    // Кнопка "Касса" доступна только для chatID 582657818 и 1805605563
-    if (chatId && (chatId === 582657818 || chatId === 1805605563)) {
-      buttons[1].push({ text: '💳 Касса', callback_data: 'menu:payments' });
+    // Группируем кнопки по 2 в ряд для лучшего отображения
+    const buttonsInRows: InlineKeyboardButton[][] = [];
+    for (let i = 0; i < availableButtons.length; i += 2) {
+      buttonsInRows.push(availableButtons.slice(i, i + 2));
     }
 
     const keyboard = {
-      inline_keyboard: buttons,
+      inline_keyboard: buttonsInRows,
     };
-
-    // Фильтрация доступных разделов по ролям
-    // TODO: Реализовать полную логику доступа
     
     return { reply_markup: keyboard };
   }
@@ -508,28 +534,23 @@ export class BotUpdate {
    */
   private async handleMenuNavigation(ctx: ExtendedContext, section: string, user: User) {
     await ctx.answerCbQuery();
-    
+
+    const accessDenied = async () => {
+      await ctx.editMessageText('❌ Доступ запрещен', {
+        reply_markup: {
+          inline_keyboard: [[{ text: '◀️ В главное меню', callback_data: 'menu:main' }]],
+        },
+      });
+    };
+
+    const userGroupId = user.group_id;
+    const userChatId = user.telegram_id;
+
     if (section === 'main') {
-      // Возврат в главное меню
       await ctx.editMessageText(
         `Главное меню\nВаша роль: ${user.role_name || 'Гость'}`,
         this.getMainMenuKeyboard(user.group_id, ctx.from?.id)
       );
-      return;
-    }
-
-    if (section === 'payments') {
-      await this.showPaymentsMainMenu(ctx, user);
-      return;
-    }
-
-    if (section === 'shipments') {
-      await this.showShipmentsMainMenu(ctx, user);
-      return;
-    }
-
-    if (section === 'orders') {
-      await this.showOrdersMainMenu(ctx, user);
       return;
     }
 
@@ -538,12 +559,36 @@ export class BotUpdate {
       return;
     }
 
+    if (section === 'orders') {
+      // Доступ: Менеджер (6), Администратор (7)
+      if (![6, 7].includes(userGroupId)) return accessDenied();
+      await this.showOrdersMainMenu(ctx, user);
+      return;
+    }
+
+    if (section === 'shipments') {
+      // Доступ: Менеджер (6), Администратор (7)
+      if (![6, 7].includes(userGroupId)) return accessDenied();
+      await this.showShipmentsMainMenu(ctx, user);
+      return;
+    }
+
+    if (section === 'payments') {
+      // Доступ: Администратор (7) или специальные chatId
+      const allowedChatIds = [582657818, 1805605563];
+      if (userGroupId !== 7 && !allowedChatIds.includes(userChatId)) return accessDenied();
+      await this.showPaymentsMainMenu(ctx, user);
+      return;
+    }
+
     if (section === 'users') {
+      // Доступ: Только Администратор (7)
+      if (userGroupId !== 7) return accessDenied();
       await this.showUsersMainMenu(ctx, user);
       return;
     }
 
-    // TODO: Будет реализовано в соответствующих модулях
+    // Обработка неизвестных секций или тех, что не были явно проверены
     await ctx.editMessageText(`Раздел: ${section}`, {
       reply_markup: {
         inline_keyboard: [
@@ -719,18 +764,14 @@ export class BotUpdate {
       return;
     }
 
-    const allUsers = await this.usersService.getAllUsers();
-    const usersPerPage = 5;
-    const totalPages = Math.ceil(allUsers.length / usersPerPage);
-    const startIndex = (page - 1) * usersPerPage;
-    const endIndex = startIndex + usersPerPage;
-    const usersOnPage = allUsers.slice(startIndex, endIndex);
+    const usersPerPage = 20;
+    const result = await this.usersService.getAllUsersWithPagination(page, usersPerPage);
+    const { users: usersOnPage, totalPages, total } = result;
 
-    const text = `👥 Пользователи (Страница ${page}/${totalPages})`;
-    const currentPage = page;
+    const text = `👥 Пользователи (Страница ${page}/${totalPages})\nВсего: ${total}`;
 
     const userButtons: InlineKeyboardButton[][] = usersOnPage.map(user => ([
-      { text: `👁 ${user.first_name}`, callback_data: `users:view:${user.id}:page:${currentPage}` }
+      { text: `👁 ${user.first_name}`, callback_data: `users:view:${user.id}:page:${page}` }
     ]));
 
     const navigationRow: InlineKeyboardButton[] = [];

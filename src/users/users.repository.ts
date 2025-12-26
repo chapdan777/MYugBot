@@ -64,7 +64,7 @@ export class UsersRepository {
   }
 
   /**
-   * Обновить пользователя
+   * Обновить пользователя по Telegram ID
    */
   async update(telegramId: number, updates: Partial<User>): Promise<User | null> {
     // Динамическое построение UPDATE запроса на основе переданных полей
@@ -80,13 +80,39 @@ export class UsersRepository {
       .map(key => updates[key]);
 
     const query = `
-      UPDATE tg_users 
+      UPDATE tg_users
       SET ${fields}, updated_at = CURRENT_TIMESTAMP
       WHERE chat_id = ?
     `;
 
     await this.dbService.query(query, [...values, telegramId]);
     return this.findByTelegramId(telegramId);
+  }
+
+  /**
+   * Обновить пользователя по ID
+   */
+ async updateById(id: number, updates: Partial<User>): Promise<User | null> {
+    // Динамическое построение UPDATE запроса на основе переданных полей
+    const fields = Object.keys(updates)
+      .filter(key => updates[key] !== undefined && key !== 'id' && key !== 'telegram_id' && key !== 'chat_id')
+      .map(key => `${key} = ?`)
+      .join(', ');
+
+    if (!fields) return this.findById(id);
+
+    const values = Object.keys(updates)
+      .filter(key => updates[key] !== undefined && key !== 'id' && key !== 'telegram_id' && key !== 'chat_id')
+      .map(key => updates[key]);
+
+    const query = `
+      UPDATE tg_users
+      SET ${fields}, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `;
+
+    await this.dbService.query(query, [...values, id]);
+    return this.findById(id);
   }
 
   /**
@@ -180,4 +206,27 @@ export class UsersRepository {
       return userWithoutRoleName;
     });
  }
+
+  /**
+   * Получить пользователей с пагинацией
+   */
+ async getAllUsersWithPagination(limit: number, offset: number): Promise<User[]> {
+    const query = UsersQueries.getAllUsers(limit, offset);
+    const result = await this.dbService.query(query);
+    return result.map(user => {
+      // Удаляем ROLE_NAME из результата, если оно есть, так как role_name будет вычислено в UsersService
+      const { ROLE_NAME, ...userWithoutRoleName } = user;
+      return userWithoutRoleName;
+    });
+  }
+
+  /**
+   * Получить общее количество пользователей
+   */
+  async getUsersCount(): Promise<number> {
+    const query = UsersQueries.getUsersCount();
+    const result = await this.dbService.query(query);
+    return result[0]?.total || 0;
+  }
+
 }

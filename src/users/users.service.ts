@@ -38,32 +38,58 @@ export class UsersService {
    * Используется для автоматической регистрации/аутентификации
    */
   async findOrCreateUser(dto: CreateUserDto): Promise<User | null> {
-    try {
-      let user = await this.usersRepository.findByTelegramId(dto.telegram_id);
-      
-      if (!user) {
-        user = await this.usersRepository.create(dto);
-      } else {
-        // Обновляем информацию о пользователе, если что-то изменилось
-        await this.usersRepository.update(dto.telegram_id, {
-          chat_id: dto.chat_id,
-          first_name: dto.first_name,
-          last_name: dto.last_name,
-          username: dto.username,
-        });
-        user = await this.usersRepository.findByTelegramId(dto.telegram_id);
+    const maxRetries = 3;
+    let retryCount = 0;
+    
+    while (retryCount < maxRetries) {
+      try {
+        let user = await this.usersRepository.findByTelegramId(dto.telegram_id);
+        
+        if (!user) {
+          user = await this.usersRepository.create(dto);
+        } else {
+          // Обновляем информацию о пользователе, если что-то изменилось
+          await this.usersRepository.update(dto.telegram_id, {
+            chat_id: dto.chat_id,
+            first_name: dto.first_name,
+            last_name: dto.last_name,
+            username: dto.username,
+          });
+          user = await this.usersRepository.findByTelegramId(dto.telegram_id);
+        }
+        
+        // Устанавливаем role_name на основе group_id
+        if (user) {
+          user.role_name = this.translateGroupToRole(user.group_id);
+        }
+        
+        return user;
+      } catch (error) {
+        // Проверяем, является ли ошибка дедлоком
+        const isDeadlock = error.message &&
+                          (error.message.includes('Deadlock') ||
+                           error.message.includes('deadlock') ||
+                           error.message.includes('conflict') ||
+                           error.code === '40001' || // Transaction serialization error
+                           error.code === '40P01');  // PostgreSQL deadlock
+        
+        if (isDeadlock && retryCount < maxRetries - 1) {
+          retryCount++;
+          // Экспоненциальная задержка перед повторной попыткой
+          const delay = Math.pow(2, retryCount) * 100 + Math.random() * 100;
+          console.warn(`[UsersService] Deadlock detected, retrying (${retryCount}/${maxRetries}) after ${delay}ms...`, error);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+        
+        console.error('[UsersService] Error in findOrCreateUser:', error);
+        throw error;
       }
-      
-      // Устанавливаем role_name на основе group_id
-      if (user) {
-        user.role_name = this.translateGroupToRole(user.group_id);
-      }
-      
-      return user;
-    } catch (error) {
-      console.error('[UsersService] Error in findOrCreateUser:', error);
-      throw error;
     }
+    
+    // This should not be reached given the while loop condition,
+    // but added to satisfy TypeScript compiler
+    throw new Error('Max retries reached for findOrCreateUser');
   }
 
   /**
@@ -194,6 +220,37 @@ export class UsersService {
   async getAllUsers(): Promise<User[]> {
     const users = await this.usersRepository.getAllUsers();
     return users.map(user => this.setUserRoleName(user));
+  }
+
+  /**
+   * Получить всех пользователей с пагинацией
+   */
+ async getAllUsersWithPagination(page: number, limit: number): Promise<{ users: User[]; total: number; page: number; totalPages: number }> {
+    const offset = (page - 1) * limit;
+    const [users, total] = await Promise.all([
+      this.usersRepository.getAllUsersWithPagination(limit, offset),
+      this.usersRepository.getUsersCount()
+    ]);
+    
+    const totalPages = Math.ceil(total / limit);
+    
+    return {
+      users: users.map(user => this.setUserRoleName(user)),
+      total,
+      page,
+      totalPages
+    };
+  }
+
+ /**
+   * Обновить пользователя по ID
+   */
+ async updateUserById(id: number, updates: Partial<User>): Promise<User | null> {
+    const user = await this.usersRepository.updateById(id, updates);
+    if (user) {
+      user.role_name = this.translateGroupToRole(user.group_id);
+    }
+    return user;
   }
 
   /**

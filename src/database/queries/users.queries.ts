@@ -4,20 +4,78 @@
  */
 
 export const UsersQueries = {
-  // Get all users
-  getAllUsers: () => `
-    SELECT
-      u.ID AS "id",
-      u.CHAT_ID AS "telegram_id",
-      u.CHAT_ID AS "chat_id",
-      u.GROUP_ID AS "group_id",
-      u.FIRST_NAME AS "first_name",
-      u.LAST_NAME AS "last_name",
-      u.USERNAME AS "username",
-      u.IS_REGISTERED AS "is_registered",
-      u.IS_BLOCKED AS "is_blocked"
+  // Get all users with pagination
+ getAllUsers: (limit?: number, offset?: number) => {
+    let query = `
+      SELECT
+        u.ID AS "id",
+        u.CHAT_ID AS "telegram_id",
+        u.CHAT_ID AS "chat_id",
+        u.GROUP_ID AS "group_id",
+        u.FIRST_NAME AS "first_name",
+        u.LAST_NAME AS "last_name",
+        u.USERNAME AS "username",
+        u.IS_REGISTERED AS "is_registered",
+        u.IS_BLOCKED AS "is_blocked"
+      FROM tg_users u
+      ORDER BY u.ID
+    `;
+    
+    // Firebird uses different syntax for LIMIT/OFFSET
+    if (limit !== undefined && offset !== undefined && offset > 0) {
+      // For Firebird 2.0+, use ROWS syntax
+      query = `
+        SELECT
+          u.ID AS "id",
+          u.CHAT_ID AS "telegram_id",
+          u.CHAT_ID AS "chat_id",
+          u.GROUP_ID AS "group_id",
+          u.FIRST_NAME AS "first_name",
+          u.LAST_NAME AS "last_name",
+          u.USERNAME AS "username",
+          u.IS_REGISTERED AS "is_registered",
+          u.IS_BLOCKED AS "is_blocked"
+        FROM tg_users u
+        ORDER BY u.ID
+        ROWS ${offset + 1} TO ${offset + limit}`;
+    } else if (limit !== undefined && offset !== undefined) {
+      // When offset is 0, just use FIRST
+      query = `
+        SELECT FIRST ${limit}
+          u.ID AS "id",
+          u.CHAT_ID AS "telegram_id",
+          u.CHAT_ID AS "chat_id",
+          u.GROUP_ID AS "group_id",
+          u.FIRST_NAME AS "first_name",
+          u.LAST_NAME AS "last_name",
+          u.USERNAME AS "username",
+          u.IS_REGISTERED AS "is_registered",
+          u.IS_BLOCKED AS "is_blocked"
+        FROM tg_users u
+        ORDER BY u.ID`;
+    } else if (limit !== undefined) {
+      query = `
+        SELECT FIRST ${limit}
+          u.ID AS "id",
+          u.CHAT_ID AS "telegram_id",
+          u.CHAT_ID AS "chat_id",
+          u.GROUP_ID AS "group_id",
+          u.FIRST_NAME AS "first_name",
+          u.LAST_NAME AS "last_name",
+          u.USERNAME AS "username",
+          u.IS_REGISTERED AS "is_registered",
+          u.IS_BLOCKED AS "is_blocked"
+        FROM tg_users u
+        ORDER BY u.ID`;
+    }
+    
+    return query;
+  },
+
+  // Get users count for pagination
+ getUsersCount: () => `
+    SELECT COUNT(*) as total
     FROM tg_users u
-    ORDER BY u.ID
   `,
 
   // Find user by ID
