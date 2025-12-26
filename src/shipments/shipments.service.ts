@@ -32,13 +32,13 @@ export class ShipmentsService {
   ///************************ */
   
   // Map to store last shown shipments-list message per user (in-memory).
-// Format: userId -> { chatId: number, messageId: number, isProfile?: boolean, fromSearch?: boolean }
-private lastListMessageByUser: Map<number, { chatId: number; messageId: number; isProfile?: boolean; fromSearch?: boolean }> = new Map();
+// Format: userId -> { chatId: number, messageId: number, isProfile?: boolean, fromSearch?: boolean, filter?: string }
+private lastListMessageByUser: Map<number, { chatId: number; messageId: number; isProfile?: boolean; fromSearch?: boolean; filter?: string }> = new Map();
 
 /**
  * Save the last shipments list message reference for a user.
  */
-setLastListMessage(userId: number, info: { chatId: number; messageId: number; isProfile?: boolean; fromSearch?: boolean }) {
+setLastListMessage(userId: number, info: { chatId: number; messageId: number; isProfile?: boolean; fromSearch?: boolean; filter?: string }) {
   this.lastListMessageByUser.set(userId, info);
 }
 

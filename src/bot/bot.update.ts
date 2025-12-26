@@ -175,6 +175,7 @@ export class BotUpdate {
       
       // Get saved message reference to edit it
       const savedMessage = this.shipmentsService.getLastListMessage(user.id);
+      const filter = savedMessage?.filter || 'all';
       
       if (savedMessage && ctx.telegram) {
         // Edit the saved shipment list message
@@ -186,7 +187,7 @@ export class BotUpdate {
             text,
             {
               reply_markup: {
-                inline_keyboard: [[{ text: '◀️ Назад', callback_data: `shipments:list:${isProfile ? 'profile' : 'facade'}` }]],
+                inline_keyboard: [[{ text: '◀️ Назад', callback_data: `shipments:list:${isProfile ? 'profile' : 'facade'}:${filter}:page:1` }]],
               },
               parse_mode: 'HTML',
             } as any
@@ -196,7 +197,7 @@ export class BotUpdate {
           // Fallback: send new message if editing fails
           await ctx.reply(text, {
             reply_markup: {
-              inline_keyboard: [[{ text: '◀️ Назад', callback_data: `shipments:list:${isProfile ? 'profile' : 'facade'}` }]],
+              inline_keyboard: [[{ text: '◀️ Назад', callback_data: `shipments:list:${isProfile ? 'profile' : 'facade'}:${filter}:page:1` }]],
             },
             parse_mode: 'HTML',
           } as any);
@@ -205,7 +206,7 @@ export class BotUpdate {
         // Fallback: send new message if no saved reference
         await ctx.reply(text, {
           reply_markup: {
-            inline_keyboard: [[{ text: '◀️ Назад', callback_data: `shipments:list:${isProfile ? 'profile' : 'facade'}` }]],
+            inline_keyboard: [[{ text: '◀️ Назад', callback_data: `shipments:list:${isProfile ? 'profile' : 'facade'}:${filter}:page:1` }]],
           },
           parse_mode: 'HTML',
         } as any);
@@ -281,6 +282,7 @@ export class BotUpdate {
       
       // Get saved message reference to edit it
       const savedMessage = this.shipmentsService.getLastListMessage(user.id);
+      const filter = savedMessage?.filter || 'all';
       
       if (savedMessage && ctx.telegram) {
         // Edit the saved shipment list message
@@ -292,7 +294,7 @@ export class BotUpdate {
             text,
             {
               reply_markup: {
-                inline_keyboard: [[{ text: '◀️ Назад', callback_data: `shipments:list:${isProfile ? 'profile' : 'facade'}` }]],
+                inline_keyboard: [[{ text: '◀️ Назад', callback_data: `shipments:list:${isProfile ? 'profile' : 'facade'}:${filter}:page:1` }]],
               },
               parse_mode: 'HTML',
             } as any
@@ -302,7 +304,7 @@ export class BotUpdate {
           // Fallback: send new message if editing fails
           await ctx.reply(text, {
             reply_markup: {
-              inline_keyboard: [[{ text: '◀️ Назад', callback_data: `shipments:list:${isProfile ? 'profile' : 'facade'}` }]],
+              inline_keyboard: [[{ text: '◀️ Назад', callback_data: `shipments:list:${isProfile ? 'profile' : 'facade'}:${filter}:page:1` }]],
             },
             parse_mode: 'HTML',
           } as any);
@@ -311,7 +313,7 @@ export class BotUpdate {
         // Fallback: send new message if no saved reference
         await ctx.reply(text, {
           reply_markup: {
-            inline_keyboard: [[{ text: '◀️ Назад', callback_data: `shipments:list:${isProfile ? 'profile' : 'facade'}` }]],
+            inline_keyboard: [[{ text: '◀️ Назад', callback_data: `shipments:list:${isProfile ? 'profile' : 'facade'}:${filter}:page:1` }]],
           },
           parse_mode: 'HTML',
         } as any);
@@ -613,10 +615,10 @@ export class BotUpdate {
       reply_markup: {
         inline_keyboard: [
           [
-            { text: '📋 Профиль', callback_data: 'shipments:list:profile:page:1' },
+            { text: '📋 Профиль', callback_data: 'shipments:list:profile:all:page:1' },
           ],
           [
-            { text: '📋 Фасады', callback_data: 'shipments:list:facade:page:1' },
+            { text: '📋 Фасады', callback_data: 'shipments:list:facade:all:page:1' },
           ],
           [
             { text: '◀️ Назад', callback_data: 'menu:main' },
@@ -791,13 +793,20 @@ export class BotUpdate {
 
     if (action === 'list') {
       const isProfile = id === 'profile';
-      // Extract page from params or default to 1
-      const page = params[0] === 'page' ? parseInt(params[1], 10) || 1 : 1;
+      // Extract filter and page from params
+      const filter = params[0] || 'all'; // 'all' or 'debt'
+      const page = params[1] === 'page' ? parseInt(params[2], 10) || 1 : 1;
       const type = isProfile ? 'профиля' : 'фасадов';
       
       try {
         // Получаем все отгрузки
-        const allShipments = await this.shipmentsService.getShipmentsList(isProfile);
+        let allShipments = await this.shipmentsService.getShipmentsList(isProfile);
+        
+        // Фильтруем по долгу, если нужно
+        if (filter === 'debt') {
+          allShipments = allShipments.filter(s => s.debt && s.debt > 0);
+        }
+        
         const perPage = 10;
         const totalPages = Math.ceil(allShipments.length / perPage);
         const startIndex = (page - 1) * perPage;
@@ -805,7 +814,8 @@ export class BotUpdate {
         const pageShipments = allShipments.slice(startIndex, endIndex);
         
         // Создаем текст со ссылками на команды
-        let displayText = `Отгрузки ${type} (Стр. ${page}/${totalPages})\n\n`;
+        const filterLabel = filter === 'debt' ? ' (🔴 С долгом)' : '';
+        let displayText = `Отгрузки ${type}${filterLabel} (Стр. ${page}/${totalPages})\n\n`;
         
         pageShipments.forEach((shipment, index) => {
           // Handle potentially undefined shipment properties
@@ -844,13 +854,21 @@ export class BotUpdate {
         
         // Создаем кнопки навигации
         const keyboard: any[] = [];
+        
+        // Кнопки фильтрации
+        keyboard.push([
+          { text: filter === 'all' ? '✅ Все' : '📊 Все', callback_data: `shipments:list:${isProfile ? 'profile' : 'facade'}:all:page:1` },
+          { text: filter === 'debt' ? '✅ С долгом' : '🔴 С долгом', callback_data: `shipments:list:${isProfile ? 'profile' : 'facade'}:debt:page:1` },
+        ]);
+        
+        // Кнопки пагинации
         if (totalPages > 1) {
           const navRow: any[] = [];
           if (page > 1) {
-            navRow.push({ text: '◀️ Назад', callback_data: `shipments:list:${isProfile ? 'profile' : 'facade'}:page:${page - 1}` });
+            navRow.push({ text: '◀️ Назад', callback_data: `shipments:list:${isProfile ? 'profile' : 'facade'}:${filter}:page:${page - 1}` });
           }
           if (page < totalPages) {
-            navRow.push({ text: 'Вперёд ▶️', callback_data: `shipments:list:${isProfile ? 'profile' : 'facade'}:page:${page + 1}` });
+            navRow.push({ text: 'Вперёд ▶️', callback_data: `shipments:list:${isProfile ? 'profile' : 'facade'}:${filter}:page:${page + 1}` });
           }
           if (navRow.length > 0) {
             keyboard.push(navRow);
@@ -872,6 +890,7 @@ export class BotUpdate {
             messageId: (sentMessage as any).message_id,
             isProfile,
             fromSearch: false, // Маркер "из отгрузок"
+            filter, // Сохраняем текущий фильтр
           });
         }
       } catch (error) {
@@ -1167,7 +1186,8 @@ export class BotUpdate {
       backButton = { text: '◀️ Назад', callback_data: 'menu:orders' };
       context = 'search';
     } else if (savedMessage && savedMessage.isProfile !== undefined) {
-      backButton = { text: '◀️ Назад', callback_data: `shipments:list:${savedMessage.isProfile ? 'profile' : 'facade'}` };
+      const filter = savedMessage.filter || 'all';
+      backButton = { text: '◀️ Назад', callback_data: `shipments:list:${savedMessage.isProfile ? 'profile' : 'facade'}:${filter}:page:1` };
       context = 'shipment';
     } else {
       backButton = { text: '◀️ Назад', callback_data: 'menu:orders' };
