@@ -149,11 +149,16 @@ clearLastListMessage(userId: number) {
 
     const totalBoxes = details.reduce((sum, d) => sum + (d.box_count || 0), 0);
     const totalAmount = details.reduce((sum, d) => sum + (d.amount || 0), 0);
+    const totalDebt = details.reduce((sum, d) => sum + (d.debt || 0), 0);
 
     let text = `Отправка от ${this.formatDate(shipmentDate)}\n`;
     text += `🚚 Водитель: <b>${driverName || 'Неизвестный водитель'}</b>\n`;
     text += `📦 Всего упаковок: ${totalBoxes}\n`;
     text += `💰 Сумма: ${this.formatMoney(totalAmount)}\n`;
+    if (totalDebt !== 0) {
+        const debtLabel = totalDebt > 0 ? '🔴 Общий долг' : '🟢 Общая переплата';
+        text += `${debtLabel}: ${this.formatMoney(Math.abs(totalDebt))}\n`;
+    }
     text += `${'—'.repeat(22)}\n\n`;
 
     // Group by client
@@ -184,8 +189,9 @@ clearLastListMessage(userId: number) {
         
         text += `${index + 1}. Заказ № ${orderId}\n`;
         text += `   ${boxCount} уп / ${this.formatMoney(amount)}`;
-        if (debt > 0) {
-          text += ` | 🔴 Долг: ${this.formatMoney(debt)}`;
+        if (debt !== 0) {
+          const debtLabel = debt > 0 ? '🔴 Долг' : '🟢 Переплата';
+          text += ` | ${debtLabel}: ${this.formatMoney(Math.abs(debt))}`;
         }
         text += `\n`;
         text += `   📂 /id${orderId}\n`;

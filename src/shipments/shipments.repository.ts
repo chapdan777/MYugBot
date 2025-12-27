@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
-import { ShipmentsQueries } from '../database/queries';
+import { ShipmentsQueries, OrdersQueries } from '../database/queries';
 import { ShipmentSummary, ShipmentDetail } from './shipments.service';
 
 /**
@@ -33,13 +33,12 @@ export class ShipmentsRepository {
   async getShipmentDetails(
     driverName: string,
     shipmentDate: string | Date,
-    isProfile: boolean,
+    isProfile: boolean, // isProfile больше не используется в запросе, но оставим для сигнатуры
   ): Promise<ShipmentDetail[]> {
-    const query = ShipmentsQueries.getShipmentDetails(isProfile);
-    // Convert Date to 'YYYY-MM-DD' format for Firebird DATE comparison
+    // Этап 1: Получаем ID заказов
+    const orderIdsQuery = ShipmentsQueries.getShipmentOrderIds();
     let dateParam: string;
     if (shipmentDate instanceof Date) {
-      // Use local date (not UTC) to match how dates are displayed
       const year = shipmentDate.getFullYear();
       const month = String(shipmentDate.getMonth() + 1).padStart(2, '0');
       const day = String(shipmentDate.getDate()).padStart(2, '0');
@@ -48,15 +47,24 @@ export class ShipmentsRepository {
       dateParam = shipmentDate;
     }
     const params = [driverName, dateParam];
-    const results = await this.dbService.query(query, params);
+    const orderIdRows = await this.dbService.query(orderIdsQuery, params);
+
+    if (orderIdRows.length === 0) {
+      return [];
+    }
+    const orderIds = orderIdRows.map(row => row.ORDER_ID);
+
+    // Этап 2: Получаем детали заказов по их ID
+    const detailsQuery = OrdersQueries.getOrdersByIds(orderIds);
+    const results = await this.dbService.query(detailsQuery);
     
-    // Map database fields (uppercase) to interface fields (lowercase)
+    // Маппинг остается похожим, но поля могут называться иначе
     return results.map(row => ({
       id: row.ID,
       clientname: row.CLIENTNAME,
-      box_count: row.BOX_COUNT,
-      amount: row.AMOUNT,
-      debt: row.DEBT || 0
+      box_count: row.BOX_COUNT, // Это поле нужно будет добавить в getOrdersByIds
+      amount: row.ORDER_TOTAL_COST,
+      debt: row.ORDER_DEBT || 0
     }));
   }
 

@@ -9,7 +9,7 @@ export const ShipmentsQueries = {
     SELECT J.FACT_DATE_OUT, J.DRIVER_NAME, 
            SUM(J.BOX_COUNT) AS BOX, 
            SUM(O.ORDER_TOTAL_COST) AS AMOUNT,
-           SUM(O.ORDER_TOTAL_COST - O.ORDER_PAY) AS DEBT
+           SUM(O.ORDER_TOTAL_COST - COALESCE(O.ORDER_PAY, 0)) AS DEBT
     FROM ORDERS O
     INNER JOIN JOURNAL_OUT J ON (J.ORDER_ID = O.ID)
     INNER JOIN CLIENTS C ON (O.CLIENT = C.CLIENTNAME)
@@ -20,15 +20,26 @@ export const ShipmentsQueries = {
 
   // Get shipment details by date and driver
   getShipmentDetails: (isProfile: boolean) => `
-    SELECT O.ID, C.CLIENTNAME, J.BOX_COUNT, 
-           O.ORDER_TOTAL_COST as AMOUNT,
-           (O.ORDER_TOTAL_COST - O.ORDER_PAY) as DEBT
-    FROM ORDERS O
-    INNER JOIN JOURNAL_OUT J on (J.ORDER_ID = O.ID)
-    INNER JOIN CLIENTS C on (O.CLIENT = C.CLIENTNAME)
+    SELECT
+           J.ORDER_ID AS ID,
+           C.CLIENTNAME,
+           J.BOX_COUNT,
+           O.ORDER_TOTAL_COST AS AMOUNT,
+           (O.ORDER_TOTAL_COST - COALESCE(O.ORDER_PAY, 0)) AS DEBT
+    FROM JOURNAL_OUT J
+    INNER JOIN ORDERS O ON (J.ORDER_ID = O.ID)
+    INNER JOIN CLIENTS C ON (O.CLIENT = C.CLIENTNAME)
     WHERE ${isProfile ? 'C.PROFILER = 1' : '(C.PROFILER != 1 OR C.PROFILER IS NULL)'}
-    AND J.DRIVER_NAME = ?
-    AND CAST(J.FACT_DATE_OUT AS DATE) = ?
+      AND J.DRIVER_NAME = ?
+      AND CAST(J.FACT_DATE_OUT AS DATE) = ?
+  `,
+
+  // Get only order IDs for a specific shipment
+  getShipmentOrderIds: () => `
+    SELECT J.ORDER_ID
+    FROM JOURNAL_OUT J
+    WHERE J.DRIVER_NAME = ?
+      AND CAST(J.FACT_DATE_OUT AS DATE) = ?
   `,
 
   // Get packed orders notification data

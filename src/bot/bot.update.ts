@@ -140,10 +140,19 @@ export class BotUpdate {
     
     const isProfile = type === 'pr';
     
-    // Get ALL shipments to find the correct one by absolute index
-    const allShipments = await this.shipmentsService.getShipmentsList(isProfile);
+    // Get saved filter from last list message
+    const savedMessage = this.shipmentsService.getLastListMessage(user.id);
+    const filter = savedMessage?.filter || 'all';
     
-    // Validate that the index is valid for all shipments (index is 1-based, convert to 0-based)
+    // Get shipments with the same filter as the list
+    let allShipments = await this.shipmentsService.getShipmentsList(isProfile);
+    
+    // Apply filter if needed
+    if (filter === 'debt') {
+      allShipments = allShipments.filter(s => s.debt && s.debt > 0);
+    }
+    
+    // Validate that the index is valid for filtered shipments (index is 1-based, convert to 0-based)
     const arrayIndex = displayIndex - 1;
     if (!allShipments || arrayIndex < 0 || arrayIndex >= allShipments.length) {
       await ctx.reply('❌ Данные отгрузки не найдены или индекс устарел. Пожалуйста, откройте список отгрузок заново.');
@@ -173,10 +182,7 @@ export class BotUpdate {
       // Форматируем для отображения (shipmentDate is already a Date object)
       const text = this.shipmentsService.formatShipmentDetailsForDisplay(details, driverName, shipmentDate as Date);
       
-      // Get saved message reference to edit it
-      const savedMessage = this.shipmentsService.getLastListMessage(user.id);
-      const filter = savedMessage?.filter || 'all';
-      
+      // Use the filter we already retrieved above
       if (savedMessage && ctx.telegram) {
         // Edit the saved shipment list message
         try {
@@ -248,8 +254,17 @@ export class BotUpdate {
     
     const isProfile = type === 'profile';
 
-    // Get ALL shipments to find the correct one by absolute index
-    const allShipments = await this.shipmentsService.getShipmentsList(isProfile);
+    // Get saved filter from last list message
+    const savedMessage = this.shipmentsService.getLastListMessage(user.id);
+    const filter = savedMessage?.filter || 'all';
+    
+    // Get shipments with the same filter as the list
+    let allShipments = await this.shipmentsService.getShipmentsList(isProfile);
+    
+    // Apply filter if needed
+    if (filter === 'debt') {
+      allShipments = allShipments.filter(s => s.debt && s.debt > 0);
+    }
     
     // Validate that the index is valid (0-based)
     if (!allShipments || index < 0 || index >= allShipments.length) {
@@ -280,10 +295,7 @@ export class BotUpdate {
       // Форматируем для отображения (shipmentDate is already a Date object)
       const text = this.shipmentsService.formatShipmentDetailsForDisplay(details, driverName, shipmentDate as any);
       
-      // Get saved message reference to edit it
-      const savedMessage = this.shipmentsService.getLastListMessage(user.id);
-      const filter = savedMessage?.filter || 'all';
-      
+      // Use the filter we already retrieved above
       if (savedMessage && ctx.telegram) {
         // Edit the saved shipment list message
         try {
